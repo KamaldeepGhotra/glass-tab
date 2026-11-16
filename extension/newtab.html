@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <title>New Tab</title>
   <link rel="stylesheet" href="newtab.css">
+  <script src="boot.js"></script>
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -18,14 +19,18 @@
   <div id="fade" aria-hidden="true"></div>
 
   <main>
+    <div id="greeting"></div>
     <div id="date"></div>
     <div id="clock"></div>
+    <div id="quoteCaption"></div>
     <form id="search" class="glass liquid" role="search">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <input id="q" type="text" placeholder="Search or type a URL" autocomplete="off" aria-label="Search or type a URL">
     </form>
-    <section id="widgets"></section>
+    <section id="widgets" aria-label="Widgets"></section>
   </main>
+
+  <button id="doneEdit" class="glass" hidden>Done</button>
 
   <button id="gear" class="glass" aria-label="Customize" aria-expanded="false">
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
@@ -44,7 +49,10 @@
       <h3>Glass</h3>
       <label class="slider">Clarity <input type="range" id="blur" min="2" max="30" step="1"></label>
       <label class="slider">Tint <input type="range" id="tint" min="4" max="24" step="1"></label>
-      <label class="toggle"><input type="checkbox" id="liquid"> Liquid refraction on search bar</label>
+      <label class="toggle"><input type="checkbox" id="liquid"> Liquid refraction</label>
+      <label class="toggle"><input type="checkbox" id="solid"> Reduce transparency</label>
+      <label class="toggle"><input type="checkbox" id="glassGoogle"> Glass Google search results</label>
+      <p class="note">Works on google.com in dark mode. Chrome will ask to let Glass Tab change google.com.</p>
     </section>
 
     <section>
@@ -55,17 +63,35 @@
         <button data-style="frost">Frosted glass</button>
       </div>
       <div id="fonts" class="chips"></div>
+      <div id="clockColors" class="swatches small"></div>
       <label class="slider">Size <input type="range" id="size" min="64" max="200" step="2"></label>
       <label class="toggle"><input type="checkbox" id="hour24"> 24-hour time</label>
+      <label class="field">Greeting name <input id="name" placeholder="Your name" maxlength="30"></label>
     </section>
 
     <section>
-      <h3>Widgets <span class="muted">up to 4</span></h3>
+      <h3>Widgets</h3>
       <div id="widgetChips" class="chips"></div>
-      <label class="field">Weather city <input id="city" placeholder="Toronto" maxlength="60"></label>
+      <button id="editLayout" class="chip wide">Edit layout</button>
+      <h3 class="sub">Quote</h3>
+      <div id="quoteModes" class="chips">
+        <button data-mode="off">Off</button>
+        <button data-mode="caption">Under the clock</button>
+        <button data-mode="widget">As a widget</button>
+      </div>
+    </section>
+
+    <section>
+      <h3>Weather</h3>
+      <label class="field">City <input id="city" placeholder="Toronto" maxlength="60"></label>
+      <button id="useLocation" class="chip wide">Use my location</button>
       <label class="field">Units
         <select id="units"><option value="c">°C</option><option value="f">°F</option></select>
       </label>
+    </section>
+
+    <section>
+      <a id="guide" href="welcome.html" class="muted">Setup guide</a>
     </section>
   </aside>
 

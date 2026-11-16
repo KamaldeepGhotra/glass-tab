@@ -1,8 +1,21 @@
 {
   "manifest_version": 3,
   "name": "Glass Tab",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A calm, liquid-glass new tab page and search bar.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Open glass search",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
   "chrome_url_overrides": {
     "newtab": "newtab.html"
   },
@@ -15,7 +28,9 @@
       "description": "Open the glass search bar"
     }
   },
-  "permissions": ["storage", "topSites", "sessions", "search", "favicon", "activeTab", "scripting", "tabs"],
+  "permissions": ["storage", "topSites", "sessions", "search", "favicon", "activeTab", "scripting", "tabs", "alarms", "notifications"],
+  "optional_permissions": ["geolocation"],
+  "optional_host_permissions": ["https://www.google.com/*"],
   "host_permissions": [
     "https://api.open-meteo.com/*",
     "https://geocoding-api.open-meteo.com/*"

@@ -3,6 +3,7 @@
   "name": "Glass Tab Theme",
   "version": "0.1.0",
   "description": "Dark toolbar that blends into the Glass Tab new tab page.",
+  "icons": { "128": "icons/icon128.png" },
   "theme": {
     "colors": {
       "frame": [11, 13, 20],

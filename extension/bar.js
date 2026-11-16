@@ -24,6 +24,7 @@
   }
   /* Less blur in liquid mode so the bending stays visible, like iOS. */
   .liquid .bar { backdrop-filter: url(#gb-liquid) blur(calc(var(--blur) / 3)) saturate(180%); }
+  .solid .bar { backdrop-filter: none; }
   @keyframes pop { from { opacity: 0; transform: translateX(-50%) scale(.96); } }
   @media (prefers-reduced-motion: reduce) { .bar { animation: none; } }
   .light { --fg: #111; --sub: rgba(0,0,0,.55); --edge: rgba(255,255,255,.7); --shine: rgba(255,255,255,.9); --hover: rgba(0,0,0,.07); }
@@ -88,6 +89,41 @@
     return `${chrome.runtime.getURL('/_favicon/')}?pageUrl=${encodeURIComponent(url)}&size=32`;
   }
 
+  // Small arithmetic parser (no eval): + - * / % ^ and parentheses.
+  function calc(q) {
+    const src = q.replace(/,/g, '').replace(/\s+/g, '');
+    if (!/^[\d+\-*/%^().]+$/.test(src) || !/\d[+\-*/%^]+[\d(.]/.test(src)) return null;
+    let i = 0;
+    const peek = () => src[i];
+    const num = () => {
+      if (peek() === '(') { i++; const v = expr(); if (src[i++] !== ')') throw 0; return v; }
+      const m = /^\d*\.?\d+/.exec(src.slice(i));
+      if (!m) throw 0;
+      i += m[0].length;
+      return parseFloat(m[0]);
+    };
+    const unary = () => (peek() === '-' ? (i++, -unary()) : num());
+    const power = () => { const b = unary(); return peek() === '^' ? (i++, b ** power()) : b; };
+    const term = () => {
+      let v = power();
+      while ('*/%'.includes(peek()) && peek()) { const op = src[i++]; const r = power(); v = op === '*' ? v * r : op === '/' ? v / r : v % r; }
+      return v;
+    };
+    const expr = () => {
+      let v = term();
+      while (peek() === '+' || peek() === '-') { const op = src[i++]; const r = term(); v = op === '+' ? v + r : v - r; }
+      return v;
+    };
+    try {
+      const v = expr();
+      return i === src.length && Number.isFinite(v) ? Number(v.toPrecision(12)) : null;
+    } catch { return null; }
+  }
+
+  function copy(text) {
+    navigator.clipboard?.writeText(text).catch(() => {});
+  }
+
   function looksLikeUrl(q) {
     return /^https?:\/\//i.test(q) || (!/\s/.test(q) && /^[^.]+\.[^.]{2,}/.test(q));
   }
@@ -124,9 +160,12 @@
     const q = input.value.trim();
     const id = ++queryId;
     if (!q) { items = []; render(); return; }
-    const first = looksLikeUrl(q)
-      ? { kind: 'url', title: q, sub: 'Open site', hint: 'Enter' }
-      : { kind: 'search', title: q, sub: 'Search', hint: 'Enter' };
+    const result = calc(q);
+    const first = result !== null
+      ? { kind: 'calc', title: `= ${result.toLocaleString(undefined, { maximumFractionDigits: 10 })}`, sub: 'Press Enter to copy', hint: 'Copy', value: String(result) }
+      : looksLikeUrl(q)
+        ? { kind: 'url', title: q, sub: 'Open site', hint: 'Enter' }
+        : { kind: 'search', title: q, sub: 'Search', hint: 'Enter' };
     items = [first];
     sel = 0;
     render();
@@ -138,6 +177,7 @@
 
   function run(it) {
     const q = input.value.trim();
+    if (it.kind === 'calc') copy(it.value);
     close();
     if (it.kind === 'url') location.href = /^https?:\/\//i.test(q) ? q : `https://${q}`;
     else if (it.kind === 'search') chrome.runtime.sendMessage({ type: 'search', q });
@@ -145,13 +185,17 @@
   }
 
   async function open() {
-    const s = await chrome.storage.sync.get(['blur', 'tint', 'liquid']).catch(() => ({}));
+    const s = await chrome.storage.sync.get(['blur', 'tint', 'liquid', 'solidGlass']).catch(() => ({}));
     const light = pageIsLight();
     const tint = (s.tint ?? 10) / 100;
-    wrap.className = `wrap ${light ? 'light' : 'dark'} ${s.liquid === false ? '' : 'liquid'}`;
+    const mode = s.solidGlass ? 'solid' : s.liquid === false ? '' : 'liquid';
+    wrap.className = `wrap ${light ? 'light' : 'dark'} ${mode}`;
     wrap.style.setProperty('--blur', `${s.blur ?? 18}px`);
     // Light pages need a brighter glass to read as glass instead of a grey smudge.
-    wrap.style.setProperty('--glass', light ? `rgba(255,255,255,${0.3 + tint})` : `rgba(255,255,255,${tint})`);
+    const glass = s.solidGlass
+      ? (light ? 'rgba(250,250,252,.97)' : 'rgba(30,32,44,.97)')
+      : (light ? `rgba(255,255,255,${0.3 + tint})` : `rgba(255,255,255,${tint})`);
+    wrap.style.setProperty('--glass', glass);
     lastFocus = document.activeElement;
     host.style.display = 'block';
     input.value = '';

@@ -1,0 +1,15 @@
+html, body { overflow: auto; }
+.welcome { height: auto; min-height: 100%; padding: 8vh 20px 48px; text-align: center; }
+.welcome img { border-radius: 18px; }
+.welcome h1 { font-size: 34px; font-weight: 600; margin: 16px 0 4px; letter-spacing: -.01em; }
+.lead { font-size: 17px; opacity: .8; margin: 0 0 28px; }
+.steps { list-style: none; margin: 0 0 24px; padding: 0; display: grid; gap: 14px; width: min(620px, 100%); text-align: left; }
+.step { display: flex; gap: 16px; border-radius: 24px; padding: 18px 22px; }
+.num { flex: none; width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,.85); color: #111; display: grid; place-items: center; font-weight: 600; font-size: 14px; }
+.step h2 { font-size: 17px; font-weight: 600; margin: 3px 0 6px; }
+.step p { margin: 0 0 12px; line-height: 1.5; opacity: .9; font-size: 14px; }
+.step .tip { font-size: 12px; opacity: .65; margin: 10px 0 0; }
+.step .chip { display: inline-block; text-decoration: none; }
+.step .chip[hidden] { display: none; }
+.step .chip[aria-disabled="true"] { opacity: .5; cursor: default; }
+kbd { font: inherit; font-weight: 600; background: rgba(255,255,255,.14); border-radius: 6px; padding: 1px 6px; }

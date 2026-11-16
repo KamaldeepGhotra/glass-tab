@@ -20,8 +20,25 @@ const FONTS = {
   geometric: { name: 'Geometric', stack: 'Futura, "Century Gothic", sans-serif', weight: 500 },
 };
 
-const WIDGETS = { weather: 'Weather', todo: 'To-do', focus: 'Focus timer', sites: 'Top sites', recent: 'Recent tabs', quote: 'Quote' };
-const MAX_WIDGETS = 4;
+// Soft tints only, so the clock never clashes with the wallpapers.
+const CLOCK_COLORS = {
+  white:    { name: 'White',    rgb: '255, 255, 255' },
+  warm:     { name: 'Warm',     rgb: '255, 226, 196' },
+  rose:     { name: 'Rose',     rgb: '255, 209, 224' },
+  mint:     { name: 'Mint',     rgb: '200, 245, 228' },
+  sky:      { name: 'Sky',      rgb: '206, 226, 255' },
+  lavender: { name: 'Lavender', rgb: '226, 214, 255' },
+};
+
+// Sizes: S = 1 cell, M = 2 cells wide, L = 2 x 2 cells. First size is the default.
+const WIDGETS = {
+  weather: { name: 'Weather',     sizes: ['S', 'M'] },
+  todo:    { name: 'To-do',       sizes: ['M', 'L'] },
+  focus:   { name: 'Focus timer', sizes: ['S', 'M'] },
+  sites:   { name: 'Top sites',   sizes: ['M', 'L'] },
+  recent:  { name: 'Recent tabs', sizes: ['M', 'L'] },
+  quote:   { name: 'Quote',       sizes: ['M', 'L'] },
+};
 
 const QUOTES = [
   ['Simplicity is the ultimate sophistication.', 'Leonardo da Vinci'],
@@ -35,30 +52,46 @@ const QUOTES = [
 
 const DEFAULTS = {
   wallpaper: 'aurora', animated: true,
-  blur: 18, tint: 10, liquid: true,
-  clockStyle: 'clear', clockFont: 'tall', clockSize: 140, hour24: false,
-  widgets: ['weather', 'todo', 'sites'],
-  city: '', units: 'c',
+  blur: 18, tint: 10, liquid: true, solidGlass: false,
+  clockStyle: 'clear', clockFont: 'tall', clockSize: 140, clockColor: 'white', hour24: false,
+  name: '',
+  quote: 'caption', // 'off' | 'caption' | 'widget'
+  layout: [{ k: 'weather', size: 'S' }, { k: 'todo', size: 'M' }, { k: 'sites', size: 'M' }],
+  city: '', units: 'c', useLocation: false, coords: null,
   todos: [],
 };
 
 const $ = (s) => document.querySelector(s);
 const hasChrome = typeof chrome !== 'undefined' && !!chrome.storage;
 let S;
+let editing = false;
 
 // ---------- storage ----------
-async function load() {
-  if (hasChrome) return { ...DEFAULTS, ...(await chrome.storage.sync.get(null)) };
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('glassTab') || '{}') }; } catch { return { ...DEFAULTS }; }
+// Settings live in chrome.storage.sync. A copy in localStorage lets the page draw
+// instantly with the right look, before the async sync storage answers.
+function migrate(raw) {
+  const s = { ...raw };
+  if (!s.layout && Array.isArray(s.widgets)) {
+    s.layout = s.widgets.filter((k) => k !== 'quote' && WIDGETS[k]).map((k) => ({ k, size: WIDGETS[k].sizes[0] }));
+    if (s.widgets.includes('quote')) { s.quote = 'widget'; s.layout.push({ k: 'quote', size: 'M' }); }
+  }
+  delete s.widgets;
+  const merged = { ...DEFAULTS, ...s };
+  merged.layout = merged.layout.filter((w) => WIDGETS[w.k] && WIDGETS[w.k].sizes.includes(w.size));
+  return merged;
 }
 
-let saveTimer;
+function loadMirror() {
+  try { return migrate(JSON.parse(localStorage.getItem('glassTab') || '{}')); } catch { return migrate({}); }
+}
+function mirror() { try { localStorage.setItem('glassTab', JSON.stringify(S)); } catch {} }
+
+let saveTimer, lastSave = 0;
 function save() {
+  mirror();
+  if (!hasChrome) return;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    if (hasChrome) chrome.storage.sync.set(S);
-    else try { localStorage.setItem('glassTab', JSON.stringify(S)); } catch {}
-  }, 300);
+  saveTimer = setTimeout(() => { lastSave = Date.now(); chrome.storage.sync.set(S); }, 300);
 }
 
 async function cacheGet(key) {
@@ -66,8 +99,8 @@ async function cacheGet(key) {
   try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
 }
 function cacheSet(key, value) {
-  if (hasChrome) chrome.storage.local.set({ [key]: value });
-  else try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  if (hasChrome) return chrome.storage.local.set({ [key]: value });
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
 // ---------- helpers ----------
@@ -86,35 +119,75 @@ function favicon(url) {
   return `${chrome.runtime.getURL('/_favicon/')}?pageUrl=${encodeURIComponent(url)}&size=32`;
 }
 
+function todaysQuote() {
+  return QUOTES[Math.floor(Date.now() / 86400000) % QUOTES.length];
+}
+
 // ---------- look ----------
 function applyLook() {
-  const root = document.documentElement.style;
   const p = PRESETS[S.wallpaper] || PRESETS.aurora;
-  root.setProperty('--base', p.base);
-  p.c.forEach((c, i) => root.setProperty(`--c${i + 1}`, c));
-  root.setProperty('--blur', `${S.blur}px`);
-  root.setProperty('--tint', S.tint / 100);
-
   const f = FONTS[S.clockFont] || FONTS.tall;
   // Thin strokes leave no surface to show glass, so glass styles get a heavier weight.
   const weight = S.clockStyle !== 'solid' && f.weight < 400 ? 400 : f.weight;
-  root.setProperty('--clock-font', f.stack);
-  root.setProperty('--clock-weight', weight);
-  root.setProperty('--clock-size', `${S.clockSize}px`);
+  const vars = {
+    '--base': p.base, '--c1': p.c[0], '--c2': p.c[1], '--c3': p.c[2],
+    '--blur': `${S.blur}px`, '--tint': String(S.tint / 100),
+    '--clock-font': f.stack, '--clock-weight': String(weight), '--clock-size': `${S.clockSize}px`,
+    '--clock-rgb': (CLOCK_COLORS[S.clockColor] || CLOCK_COLORS.white).rgb,
+  };
+  const cls = [S.animated && 'animated', S.liquid && 'liquid', S.solidGlass && 'solid'].filter(Boolean).join(' ');
+  const root = document.documentElement;
+  for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+  root.className = cls;
   $('#clock').className = S.clockStyle;
+  try { localStorage.setItem('glassTabLook', JSON.stringify({ vars, cls })); } catch {}
+  // Shared with the Glass Google content script.
+  const look = { base: p.base, c: p.c, blur: S.blur, tint: S.tint, solid: S.solidGlass };
+  if (hasChrome && JSON.stringify(look) !== lastLook) { lastLook = JSON.stringify(look); chrome.storage.local.set({ look }); }
+}
+let lastLook = '';
 
-  document.body.classList.toggle('animated', S.animated);
-  document.body.classList.toggle('liquid', S.liquid);
+// ---------- glass Google search (opt-in, per device) ----------
+const GOOGLE = { id: 'glass-google', origins: ['https://www.google.com/*'] };
+
+async function glassGoogleOn() {
+  if (!hasChrome) return false;
+  const [registered] = await chrome.scripting.getRegisteredContentScripts({ ids: [GOOGLE.id] });
+  return !!registered && (await chrome.permissions.contains({ origins: GOOGLE.origins }));
+}
+
+async function setGlassGoogle(on) {
+  const box = $('#glassGoogle');
+  if (!hasChrome) { box.checked = false; return; }
+  if (on) {
+    // Must be requested straight from the click, before any other await.
+    if (!(await chrome.permissions.request({ origins: GOOGLE.origins }))) { box.checked = false; return; }
+    await chrome.scripting.unregisterContentScripts({ ids: [GOOGLE.id] }).catch(() => {});
+    await chrome.scripting.registerContentScripts([{
+      id: GOOGLE.id, matches: ['https://www.google.com/search*'], css: ['google.css'], js: ['google.js'], runAt: 'document_start',
+    }]);
+  } else {
+    await chrome.scripting.unregisterContentScripts({ ids: [GOOGLE.id] }).catch(() => {});
+    await chrome.permissions.remove({ origins: GOOGLE.origins }).catch(() => {});
+  }
+  box.checked = await glassGoogleOn();
 }
 
 // ---------- clock ----------
-function tick() {
+function updateClock() {
   const d = new Date();
   let hr = d.getHours();
+  const part = hr < 5 ? 'evening' : hr < 12 ? 'morning' : hr < 17 ? 'afternoon' : 'evening';
   if (!S.hour24) hr = hr % 12 || 12;
   $('#clock').textContent = `${hr}:${String(d.getMinutes()).padStart(2, '0')}`;
   $('#date').textContent = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-  setTimeout(tick, 1000 - d.getMilliseconds());
+  $('#greeting').textContent = S.name ? `Good ${part}, ${S.name}` : '';
+  const [text, who] = todaysQuote();
+  $('#quoteCaption').textContent = S.quote === 'caption' ? `"${text}" — ${who}` : '';
+}
+function tick() {
+  updateClock();
+  setTimeout(tick, 1000 - (Date.now() % 1000));
 }
 
 // ---------- widgets ----------
@@ -131,38 +204,52 @@ function wxLabel(code) {
 }
 
 async function getWeather() {
-  const key = `${S.city}|${S.units}`;
+  const here = S.useLocation && S.coords;
+  const key = here ? `${S.coords.lat.toFixed(2)},${S.coords.lon.toFixed(2)}|${S.units}` : `${S.city}|${S.units}`;
   const cached = await cacheGet('weather');
   if (cached && cached.key === key && Date.now() - cached.at < 30 * 60e3) return cached.data;
 
-  const geo = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(S.city)}&count=1`)).json();
-  const place = geo.results?.[0];
-  if (!place) throw new Error('City not found');
+  let lat, lon, place;
+  if (here) {
+    ({ lat, lon } = S.coords);
+    place = 'Current location';
+  } else {
+    const geo = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(S.city)}&count=1`)).json();
+    const r = geo.results?.[0];
+    if (!r) throw new Error('City not found');
+    lat = r.latitude; lon = r.longitude; place = r.name;
+  }
   const unit = S.units === 'f' ? '&temperature_unit=fahrenheit' : '';
-  const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1${unit}`)).json();
+  const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=3${unit}`)).json();
   const data = {
-    place: place.name,
+    place,
     temp: j.current.temperature_2m,
     label: wxLabel(j.current.weather_code),
-    max: j.daily.temperature_2m_max[0],
-    min: j.daily.temperature_2m_min[0],
+    days: j.daily.time.map((t, i) => ({ t, max: j.daily.temperature_2m_max[i], min: j.daily.temperature_2m_min[i] })),
   };
   cacheSet('weather', { key, at: Date.now(), data });
   return data;
 }
 
-function weatherWidget() {
-  const body = h('div', {}, S.city ? 'Loading…' : 'Add your city in settings.');
-  if (S.city) {
+function weatherWidget(size) {
+  const body = h('div', { class: 'wx' }, S.city || S.useLocation ? 'Loading…' : 'Add a city or use your location in settings.');
+  if (S.city || S.useLocation) {
     getWeather()
-      .then((d) => body.replaceChildren(
-        h('div', { class: 'wx-temp' }, `${Math.round(d.temp)}°`),
-        h('div', {}, d.label),
-        h('div', { class: 'muted' }, `${d.place} · H ${Math.round(d.max)}° L ${Math.round(d.min)}°`),
-      ))
+      .then((d) => {
+        const now = h('div', {},
+          h('div', { class: 'wx-temp' }, `${Math.round(d.temp)}°`),
+          h('div', {}, d.label),
+          h('div', { class: 'muted' }, d.place));
+        if (size === 'S') { body.replaceChildren(now); return; }
+        const days = h('div', { class: 'wx-days' }, ...d.days.flatMap((day, i) => [
+          h('span', {}, i === 0 ? 'Today' : new Date(`${day.t}T12:00`).toLocaleDateString(undefined, { weekday: 'short' })),
+          h('span', {}, `${Math.round(day.max)}° / ${Math.round(day.min)}°`),
+        ]));
+        body.replaceChildren(now, days);
+      })
       .catch(() => { body.textContent = "Couldn't load weather. Check the city name."; });
   }
-  return h('div', { class: 'widget glass' }, h('h3', {}, 'Weather'), body);
+  return h('div', {}, h('h3', {}, 'Weather'), body);
 }
 
 function todoWidget() {
@@ -183,67 +270,163 @@ function todoWidget() {
     save();
     draw();
   } }, input);
-  return h('div', { class: 'widget glass' }, h('h3', {}, 'Today'), list, form);
+  return h('div', {}, h('h3', {}, 'Today'), list, form);
 }
 
+// Focus timer state lives in chrome.storage.local so every tab shows the same timer.
+// The background worker fires the "done" notification even if no tab is open.
 const FOCUS_SECONDS = 25 * 60;
-const focus = { left: FOCUS_SECONDS, timer: null, draw: () => {} };
-function stopFocus() { clearInterval(focus.timer); focus.timer = null; }
+let focusState = null;
+const focusViews = new Set();
 
-function focusWidget() {
+function freshFocus(f) {
+  const today = new Date().toDateString();
+  const s = { endAt: null, left: FOCUS_SECONDS, day: today, done: 0, ...f };
+  if (s.day !== today) { s.day = today; s.done = 0; }
+  return s;
+}
+function focusLeft(f) {
+  return f.endAt ? Math.max(0, Math.ceil((f.endAt - Date.now()) / 1000)) : f.left;
+}
+async function setFocus(next) {
+  focusState = next;
+  await cacheSet('focus', next);
+  if (hasChrome && chrome.alarms) {
+    if (next.endAt) chrome.alarms.create('focus', { when: next.endAt });
+    else chrome.alarms.clear('focus');
+  }
+  drawFocus();
+}
+function drawFocus() { focusViews.forEach((draw) => draw()); }
+
+function focusWidget(size) {
   const time = h('div', { class: 'focus-time' });
   const start = h('button', { class: 'chip' });
-  const reset = h('button', { class: 'chip', onclick: () => { stopFocus(); focus.left = FOCUS_SECONDS; focus.draw(); } }, 'Reset');
-  focus.draw = () => {
-    time.textContent = `${Math.floor(focus.left / 60)}:${String(focus.left % 60).padStart(2, '0')}`;
-    start.textContent = focus.timer ? 'Pause' : 'Start';
-  };
+  const reset = h('button', { class: 'chip', onclick: () => setFocus({ ...focusState, endAt: null, left: FOCUS_SECONDS }) }, 'Reset');
+  const count = h('div', { class: 'muted' });
   start.onclick = () => {
-    if (focus.timer) stopFocus();
-    else focus.timer = setInterval(() => {
-      focus.left -= 1;
-      if (focus.left <= 0) { stopFocus(); focus.left = FOCUS_SECONDS; }
-      focus.draw();
-    }, 1000);
-    focus.draw();
+    const f = focusState;
+    if (f.endAt) setFocus({ ...f, endAt: null, left: focusLeft(f) });
+    else setFocus({ ...f, endAt: Date.now() + f.left * 1000 });
   };
-  focus.draw();
-  return h('div', { class: 'widget glass center' }, h('h3', {}, 'Focus'), time, h('div', { class: 'row' }, start, reset));
+  const el = h('div', { class: 'center' }, h('h3', {}, 'Focus'), time, h('div', { class: 'row' }, start, reset), size === 'M' ? count : null);
+  const draw = () => {
+    if (!el.isConnected && focusViews.has(draw) && el.dataset.drawn) { focusViews.delete(draw); return; }
+    el.dataset.drawn = '1';
+    if (!focusState) return;
+    let left = focusLeft(focusState);
+    // Without Chrome (preview), finish the session here instead of in the background worker.
+    if (!hasChrome && focusState.endAt && left === 0) {
+      focusState = freshFocus({ ...focusState, endAt: null, left: FOCUS_SECONDS, done: focusState.done + 1 });
+      left = FOCUS_SECONDS;
+    }
+    time.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    start.textContent = focusState.endAt ? 'Pause' : 'Start';
+    count.textContent = `${focusState.done} ${focusState.done === 1 ? 'session' : 'sessions'} today`;
+  };
+  focusViews.add(draw);
+  draw();
+  return el;
 }
+setInterval(drawFocus, 1000);
 
-function sitesWidget() {
+function sitesWidget(size) {
   const grid = h('div', { class: 'sites' });
   if (hasChrome && chrome.topSites) {
-    chrome.topSites.get((list) => grid.replaceChildren(...list.slice(0, 8).map((s) =>
+    chrome.topSites.get((list) => grid.replaceChildren(...list.slice(0, size === 'L' ? 8 : 4).map((s) =>
       h('a', { class: 'site', href: s.url, title: s.title }, h('img', { src: favicon(s.url), alt: '' }), h('span', {}, s.title)))));
   } else { grid.className = ''; grid.textContent = 'Available when installed in Chrome.'; }
-  return h('div', { class: 'widget glass' }, h('h3', {}, 'Top sites'), grid);
+  return h('div', {}, h('h3', {}, 'Top sites'), grid);
 }
 
-function recentWidget() {
+function recentWidget(size) {
   const list = h('div', {});
   if (hasChrome && chrome.sessions) {
-    chrome.sessions.getRecentlyClosed({ maxResults: 6 }, (items) => {
-      const tabs = items.filter((i) => i.tab).slice(0, 5);
+    chrome.sessions.getRecentlyClosed({ maxResults: 10 }, (items) => {
+      // Skip closed new tab pages: they're not worth reopening.
+      const tabs = items.filter((i) => i.tab && /^https?:/.test(i.tab.url)).slice(0, size === 'L' ? 7 : 3);
       if (!tabs.length) { list.textContent = 'Nothing closed yet.'; return; }
       list.replaceChildren(...tabs.map(({ tab }) => h('button', { class: 'recent', title: tab.url, onclick: () => chrome.sessions.restore(tab.sessionId) },
         h('img', { src: favicon(tab.url), alt: '' }), h('span', {}, tab.title || tab.url))));
     });
   } else list.textContent = 'Available when installed in Chrome.';
-  return h('div', { class: 'widget glass' }, h('h3', {}, 'Recently closed'), list);
+  return h('div', {}, h('h3', {}, 'Recently closed'), list);
 }
 
 function quoteWidget() {
-  const day = Math.floor(Date.now() / 86400000);
-  const [text, who] = QUOTES[day % QUOTES.length];
-  return h('div', { class: 'widget glass' }, h('div', { class: 'quote' }, `"${text}"`), h('div', { class: 'muted' }, who));
+  const [text, who] = todaysQuote();
+  return h('div', { class: 'quote-w' }, h('div', { class: 'quote' }, `"${text}"`), h('div', { class: 'muted' }, who));
 }
 
 const RENDER = { weather: weatherWidget, todo: todoWidget, focus: focusWidget, sites: sitesWidget, recent: recentWidget, quote: quoteWidget };
 
-function renderWidgets() {
-  $('#widgets').replaceChildren(...S.widgets.filter((k) => RENDER[k]).map((k) => RENDER[k]()));
+// ---------- layout and edit mode ----------
+let dragIdx = null;
+
+function removeWidget(i) {
+  const [w] = S.layout.splice(i, 1);
+  if (w.k === 'quote') S.quote = 'off';
+  update();
+  renderWidgets();
 }
+function cycleSize(i) {
+  const w = S.layout[i];
+  const sizes = WIDGETS[w.k].sizes;
+  w.size = sizes[(sizes.indexOf(w.size) + 1) % sizes.length];
+  save();
+  renderWidgets();
+}
+
+function buildWidget({ k, size }, i) {
+  const el = RENDER[k](size);
+  el.classList.add('widget', 'glass', `size-${size}`);
+  const ctl = h('div', { class: 'wctl' });
+  if (WIDGETS[k].sizes.length > 1) ctl.append(h('button', { 'aria-label': `Change ${WIDGETS[k].name} size`, onclick: () => cycleSize(i) }, size));
+  ctl.append(h('button', { 'aria-label': `Remove ${WIDGETS[k].name}`, onclick: () => removeWidget(i) }, '×'));
+  el.append(ctl);
+
+  el.draggable = editing;
+  el.addEventListener('dragstart', (e) => { dragIdx = i; e.dataTransfer.effectAllowed = 'move'; });
+  el.addEventListener('dragover', (e) => { if (dragIdx === null) return; e.preventDefault(); el.classList.add('drag-over'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('dragend', () => { dragIdx = null; });
+  el.addEventListener('drop', (e) => {
+    e.preventDefault();
+    el.classList.remove('drag-over');
+    if (dragIdx !== null && dragIdx !== i) {
+      const [moved] = S.layout.splice(dragIdx, 1);
+      S.layout.splice(i, 0, moved);
+      save();
+      renderWidgets();
+    }
+    dragIdx = null;
+  });
+  return el;
+}
+
+function renderWidgets() {
+  focusViews.clear();
+  $('#widgets').replaceChildren(...S.layout.map(buildWidget));
+}
+
+function setEditing(on) {
+  editing = on;
+  document.body.classList.toggle('editing', on);
+  $('#doneEdit').hidden = !on;
+  if (on) $('#panel').hidden = true;
+  renderWidgets();
+}
+
+// Press and hold a widget to start editing, like iOS.
+let pressTimer;
+$('#widgets').addEventListener('pointerdown', (e) => {
+  if (editing || !e.target.closest('.widget') || e.target.closest('input, button, a')) return;
+  pressTimer = setTimeout(() => setEditing(true), 600);
+});
+['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => $('#widgets').addEventListener(t, () => clearTimeout(pressTimer)));
+// While editing, clicks only reach the size and remove buttons.
+$('#widgets').addEventListener('click', (e) => { if (editing && !e.target.closest('.wctl')) e.preventDefault(); }, true);
+$('#doneEdit').addEventListener('click', () => setEditing(false));
 
 // ---------- search ----------
 $('#search').addEventListener('submit', (e) => {
@@ -260,6 +443,31 @@ $('#search').addEventListener('submit', (e) => {
 if (hasChrome) chrome.runtime.onMessage.addListener((msg) => { if (msg.type === 'focus-search') $('#q').focus(); });
 
 // ---------- settings panel ----------
+async function useMyLocation() {
+  const btn = $('#useLocation');
+  try {
+    if (hasChrome && !(await chrome.permissions.request({ permissions: ['geolocation'] }))) return;
+    btn.textContent = 'Finding you…';
+    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
+    S.coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    S.useLocation = true;
+    S.city = '';
+    update();
+    renderWidgets();
+  } catch {
+    btn.textContent = "Couldn't get your location";
+  }
+}
+
+function setQuoteMode(mode) {
+  S.quote = mode;
+  const i = S.layout.findIndex((w) => w.k === 'quote');
+  if (mode === 'widget' && i < 0) S.layout.push({ k: 'quote', size: 'M' });
+  if (mode !== 'widget' && i >= 0) S.layout.splice(i, 1);
+  update();
+  renderWidgets();
+}
+
 function buildPanel() {
   for (const [key, p] of Object.entries(PRESETS)) {
     $('#swatches').append(h('button', {
@@ -268,66 +476,113 @@ function buildPanel() {
       onclick: () => { S.wallpaper = key; update(); },
     }));
   }
+  for (const [key, c] of Object.entries(CLOCK_COLORS)) {
+    $('#clockColors').append(h('button', {
+      'data-key': key, title: c.name, 'aria-label': `${c.name} clock`,
+      style: `background: rgb(${c.rgb})`,
+      onclick: () => { S.clockColor = key; update(); },
+    }));
+  }
   for (const [key, f] of Object.entries(FONTS)) {
     $('#fonts').append(h('button', { 'data-key': key, style: `font-family: ${f.stack.replaceAll('"', "'")}`, onclick: () => { S.clockFont = key; update(); } }, f.name));
   }
-  for (const [key, name] of Object.entries(WIDGETS)) {
-    const btn = h('button', { 'data-key': key, onclick: () => {
-      const i = S.widgets.indexOf(key);
-      if (i >= 0) S.widgets.splice(i, 1);
-      else if (S.widgets.length < MAX_WIDGETS) S.widgets.push(key);
-      else { btn.classList.remove('shake'); void btn.offsetWidth; btn.classList.add('shake'); return; }
-      update(); renderWidgets();
-    } }, name);
-    $('#widgetChips').append(btn);
+  for (const [key, w] of Object.entries(WIDGETS)) {
+    if (key === 'quote') continue; // placed with its own control
+    $('#widgetChips').append(h('button', { 'data-key': key, onclick: () => {
+      const i = S.layout.findIndex((x) => x.k === key);
+      if (i >= 0) S.layout.splice(i, 1);
+      else S.layout.push({ k: key, size: w.sizes[0] });
+      update();
+      renderWidgets();
+    } }, w.name));
   }
   $('#styles').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { S.clockStyle = b.dataset.style; update(); }));
+  $('#quoteModes').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setQuoteMode(b.dataset.mode)));
 
   const bind = (id, key, prop, cast = (v) => v) => $(id).addEventListener('input', (e) => { S[key] = cast(e.target[prop]); update(); });
   bind('#animated', 'animated', 'checked');
   bind('#liquid', 'liquid', 'checked');
+  bind('#solid', 'solidGlass', 'checked');
   bind('#hour24', 'hour24', 'checked');
   bind('#blur', 'blur', 'value', Number);
   bind('#tint', 'tint', 'value', Number);
   bind('#size', 'clockSize', 'value', Number);
-  $('#city').addEventListener('change', (e) => { S.city = e.target.value.trim(); save(); renderWidgets(); });
-  $('#units').addEventListener('change', (e) => { S.units = e.target.value; save(); renderWidgets(); });
+  bind('#name', 'name', 'value', (v) => v.trim());
+  $('#city').addEventListener('change', (e) => { S.city = e.target.value.trim(); S.useLocation = false; update(); renderWidgets(); });
+  $('#units').addEventListener('change', (e) => { S.units = e.target.value; update(); renderWidgets(); });
+  $('#useLocation').addEventListener('click', useMyLocation);
+  $('#glassGoogle').addEventListener('change', (e) => setGlassGoogle(e.target.checked));
+  glassGoogleOn().then((on) => { $('#glassGoogle').checked = on; });
+  $('#editLayout').addEventListener('click', () => setEditing(true));
 
   const panel = $('#panel'), gear = $('#gear');
   const setOpen = (open) => { panel.hidden = !open; gear.setAttribute('aria-expanded', open); };
   gear.addEventListener('click', () => setOpen(panel.hidden));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (editing) setEditing(false);
+    else setOpen(false);
+  });
   document.addEventListener('click', (e) => { if (!panel.hidden && !panel.contains(e.target) && !gear.contains(e.target)) setOpen(false); });
 }
 
 function syncPanel() {
   const mark = (sel, active) => document.querySelectorAll(`${sel} button`).forEach((b) => b.classList.toggle('on', active(b)));
   mark('#swatches', (b) => b.dataset.key === S.wallpaper);
+  mark('#clockColors', (b) => b.dataset.key === S.clockColor);
   mark('#fonts', (b) => b.dataset.key === S.clockFont);
-  mark('#widgetChips', (b) => S.widgets.includes(b.dataset.key));
+  mark('#widgetChips', (b) => S.layout.some((w) => w.k === b.dataset.key));
   mark('#styles', (b) => b.dataset.style === S.clockStyle);
+  mark('#quoteModes', (b) => b.dataset.mode === S.quote);
   $('#animated').checked = S.animated;
   $('#liquid').checked = S.liquid;
+  $('#solid').checked = S.solidGlass;
   $('#hour24').checked = S.hour24;
   $('#blur').value = S.blur;
   $('#tint').value = S.tint;
   $('#size').value = S.clockSize;
+  if (document.activeElement !== $('#name')) $('#name').value = S.name;
   $('#city').value = S.city;
   $('#units').value = S.units;
+  $('#useLocation').textContent = S.useLocation ? 'Using your location' : 'Use my location';
 }
 
 function update() {
   applyLook();
   syncPanel();
+  updateClock();
   save();
 }
 
-// ---------- init ----------
-(async () => {
-  S = await load();
-  buildPanel();
+function renderAll() {
   applyLook();
   syncPanel();
-  tick();
+  updateClock();
   renderWidgets();
+}
+
+// ---------- init ----------
+S = loadMirror();
+buildPanel();
+renderAll();
+tick();
+
+(async () => {
+  focusState = freshFocus(await cacheGet('focus'));
+  drawFocus();
+  if (!hasChrome) return;
+  const stored = migrate(await chrome.storage.sync.get(null));
+  if (JSON.stringify(stored) !== JSON.stringify(S)) { S = stored; mirror(); renderAll(); }
+  chrome.storage.sync.remove('widgets'); // replaced by "layout"
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.focus) { focusState = freshFocus(changes.focus.newValue); drawFocus(); }
+    // Another tab changed settings. Ignore the echo of this tab's own recent save.
+    if (area === 'sync' && Date.now() - lastSave > 1500) {
+      const next = { ...S };
+      for (const [k, { newValue }] of Object.entries(changes)) next[k] = newValue;
+      const merged = migrate(next);
+      if (JSON.stringify(merged) !== JSON.stringify(S)) { S = merged; mirror(); renderAll(); }
+    }
+  });
 })();

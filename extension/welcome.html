@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" class="animated">
+<head>
+  <meta charset="utf-8">
+  <title>Welcome to Glass Tab</title>
+  <link rel="stylesheet" href="newtab.css">
+  <link rel="stylesheet" href="welcome.css">
+</head>
+<body>
+  <div id="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+  <div id="fade" aria-hidden="true"></div>
+
+  <main class="welcome">
+    <img src="icons/icon128.png" alt="" width="72" height="72">
+    <h1>Welcome to Glass Tab</h1>
+    <p class="lead">Three quick steps and you're set.</p>
+
+    <ol class="steps">
+      <li class="glass step">
+        <span class="num">1</span>
+        <div>
+          <h2>Keep your new tab page</h2>
+          <p>Chrome may ask whether to keep the change to your new tab page. Choose <b>Keep it</b>. Choosing "Change it back" turns Glass Tab off.</p>
+          <button id="openTab" class="chip">Open a new tab</button>
+        </div>
+      </li>
+
+      <li class="glass step">
+        <span class="num">2</span>
+        <div>
+          <h2>Add the matching toolbar</h2>
+          <p>A free companion theme turns Chrome's toolbar dark so it blends into the glass. Chrome requires themes to be installed separately.</p>
+          <a id="getTheme" class="chip" target="_blank" rel="noopener">Add Glass Tab Theme</a>
+          <p class="tip">If an old theme comes back later, Chrome sync restored it from your Google account. Turn off theme syncing in Chrome's sync settings.</p>
+        </div>
+      </li>
+
+      <li class="glass step">
+        <span class="num">3</span>
+        <div>
+          <h2>Search from any website</h2>
+          <p id="shortcutText">Checking your shortcut…</p>
+          <button id="setShortcut" class="chip" hidden>Choose a shortcut</button>
+          <p class="tip">You can also click the Glass Tab icon in Chrome's toolbar.</p>
+        </div>
+      </li>
+    </ol>
+
+    <p class="muted">Customize everything with the button in the bottom-right corner of any new tab.</p>
+  </main>
+
+  <script src="welcome.js"></script>
+</body>
+</html>
