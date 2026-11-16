@@ -1,5 +1,6 @@
-// Fill in after the theme is published on the Chrome Web Store.
-const THEME_STORE_URL = '';
+// Fill in after each theme is published on the Chrome Web Store.
+const THEME_STORE_URLS = { dark: '', light: '' };
+const THEME_STORE_URL = THEME_STORE_URLS[document.documentElement.classList.contains('light') ? 'light' : 'dark'];
 
 const hasChrome = typeof chrome !== 'undefined' && !!chrome.commands;
 

@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Glass Tab Theme Light",
+  "version": "0.1.0",
+  "description": "Light toolbar that blends into the Glass Tab new tab page.",
+  "icons": { "128": "icons/icon128.png" },
+  "theme": {
+    "colors": {
+      "frame": [232, 235, 242],
+      "frame_inactive": [238, 240, 245],
+      "background_tab": [232, 235, 242],
+      "toolbar": [255, 255, 255],
+      "toolbar_text": [60, 64, 72],
+      "toolbar_button_icon": [80, 86, 98],
+      "tab_text": [29, 29, 31],
+      "tab_background_text": [100, 106, 118],
+      "bookmark_text": [60, 64, 72],
+      "omnibox_background": [241, 243, 247],
+      "omnibox_text": [29, 29, 31],
+      "ntp_background": [238, 241, 247],
+      "ntp_text": [29, 29, 31]
+    }
+  }
+}

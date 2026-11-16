@@ -1,4 +1,4 @@
-// Curated dark presets only: every one blends into the themed toolbar.
+// Curated presets per mode, so every wallpaper blends into the toolbar.
 const PRESETS = {
   aurora:   { name: 'Aurora',   base: '#07080d', c: ['#1d6f8a', '#4a2b7c', '#1e7f62'] },
   midnight: { name: 'Midnight', base: '#05060b', c: ['#1b2a6a', '#0d3f78', '#2a1a52'] },
@@ -6,6 +6,14 @@ const PRESETS = {
   dusk:     { name: 'Dusk',     base: '#0c0710', c: ['#8a2f5c', '#4f2a80', '#9a4a62'] },
   forest:   { name: 'Forest',   base: '#050a07', c: ['#1f5e36', '#0f4a46', '#4a6420'] },
   graphite: { name: 'Graphite', base: '#0a0a0c', c: ['#34373f', '#22242a', '#4a4d55'] },
+};
+const LIGHT_PRESETS = {
+  mist:  { name: 'Mist',  base: '#eef1f7', c: ['#a9c4ff', '#d7b8ff', '#9fe0e6'] },
+  dawn:  { name: 'Dawn',  base: '#f7efe9', c: ['#ffc2a8', '#ffb0c8', '#ffe0a3'] },
+  sky:   { name: 'Sky',   base: '#ecf3fa', c: ['#9fd0ff', '#b8c8ff', '#a7ecff'] },
+  lilac: { name: 'Lilac', base: '#f3eff9', c: ['#cdb6ff', '#f2b8e6', '#b9c7ff'] },
+  sage:  { name: 'Sage',  base: '#eef3ee', c: ['#b6e2c1', '#cfe8a9', '#a8d8d6'] },
+  pearl: { name: 'Pearl', base: '#f2f2f4', c: ['#d9dbe3', '#e9e3dc', '#d3dbe6'] },
 };
 
 // System fonts only, so nothing is downloaded. Mac fonts first, Windows fallbacks after.
@@ -21,6 +29,7 @@ const FONTS = {
 };
 
 // Soft tints only, so the clock never clashes with the wallpapers.
+// Light mode uses deep ink tones instead, so the clock stays readable.
 const CLOCK_COLORS = {
   white:    { name: 'White',    rgb: '255, 255, 255' },
   warm:     { name: 'Warm',     rgb: '255, 226, 196' },
@@ -28,6 +37,14 @@ const CLOCK_COLORS = {
   mint:     { name: 'Mint',     rgb: '200, 245, 228' },
   sky:      { name: 'Sky',      rgb: '206, 226, 255' },
   lavender: { name: 'Lavender', rgb: '226, 214, 255' },
+};
+const LIGHT_CLOCK_COLORS = {
+  ink:    { name: 'Ink',    rgb: '29, 29, 31' },
+  slate:  { name: 'Slate',  rgb: '60, 70, 92' },
+  navy:   { name: 'Navy',   rgb: '30, 52, 112' },
+  plum:   { name: 'Plum',   rgb: '92, 42, 102' },
+  forest: { name: 'Forest', rgb: '28, 82, 62' },
+  cocoa:  { name: 'Cocoa',  rgb: '102, 62, 40' },
 };
 
 // Sizes: S = 1 cell, M = 2 cells wide, L = 2 x 2 cells. First size is the default.
@@ -71,9 +88,10 @@ const QUOTES = [
 ];
 
 const DEFAULTS = {
-  wallpaper: 'aurora', animated: true,
+  appearance: 'auto', // 'auto' follows the system / Chrome setting
+  wallpaper: 'aurora', wallpaperLight: 'mist', animated: true,
   blur: 18, tint: 10, liquid: true, solidGlass: false,
-  clockStyle: 'clear', clockFont: 'tall', clockSize: 140, clockColor: 'white', hour24: false,
+  clockStyle: 'clear', clockFont: 'tall', clockSize: 140, clockColor: 'white', clockColorLight: 'ink', hour24: false,
   name: '',
   quote: 'caption', // 'off' | 'caption' | 'widget'
   layout: [{ k: 'weather', size: 'S' }, { k: 'todo', size: 'M' }, { k: 'sites', size: 'M' }],
@@ -153,27 +171,51 @@ function todaysQuote() {
 }
 
 // ---------- look ----------
-function applyLook() {
-  const p = PRESETS[S.wallpaper] || PRESETS.aurora;
+// ---------- appearance ----------
+const lightQuery = matchMedia('(prefers-color-scheme: light)');
+function mode() {
+  return S.appearance === 'auto' ? (lightQuery.matches ? 'light' : 'dark') : S.appearance;
+}
+// Per-mode choices: wallpaper list, saved wallpaper key, clock colors, saved clock color key.
+function modeSet(m = mode()) {
+  return m === 'light'
+    ? { presets: LIGHT_PRESETS, wpKey: 'wallpaperLight', colors: LIGHT_CLOCK_COLORS, colorKey: 'clockColorLight' }
+    : { presets: PRESETS, wpKey: 'wallpaper', colors: CLOCK_COLORS, colorKey: 'clockColor' };
+}
+function presetFor(m) {
+  const set = modeSet(m);
+  return set.presets[S[set.wpKey]] || Object.values(set.presets)[0];
+}
+function varsFor(m) {
+  const set = modeSet(m), p = presetFor(m);
   const f = FONTS[S.clockFont] || FONTS.tall;
   // Thin strokes leave no surface to show glass, so glass styles get a heavier weight.
   const weight = S.clockStyle !== 'solid' && f.weight < 400 ? 400 : f.weight;
-  const vars = {
+  return {
     '--base': p.base, '--c1': p.c[0], '--c2': p.c[1], '--c3': p.c[2],
     '--blur': `${S.blur}px`, '--tint': String(S.tint / 100),
     '--clock-font': f.stack, '--clock-weight': String(weight), '--clock-size': `${S.clockSize}px`,
-    '--clock-rgb': (CLOCK_COLORS[S.clockColor] || CLOCK_COLORS.white).rgb,
+    '--clock-rgb': (set.colors[S[set.colorKey]] || Object.values(set.colors)[0]).rgb,
   };
-  const cls = [S.animated && 'animated', S.liquid && 'liquid', S.solidGlass && 'solid'].filter(Boolean).join(' ');
+}
+
+function applyLook() {
+  const m = mode();
+  const base = [S.animated && 'animated', S.liquid && 'liquid', S.solidGlass && 'solid'].filter(Boolean).join(' ');
   const root = document.documentElement;
-  for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
-  root.className = cls;
+  for (const [k, v] of Object.entries(varsFor(m))) root.style.setProperty(k, v);
+  root.className = `${base}${m === 'light' ? ' light' : ''}`;
   $('#clock').className = S.clockStyle;
-  try { localStorage.setItem('glassTabLook', JSON.stringify({ vars, cls })); } catch {}
-  // Shared with the Glass Google content script.
-  const look = { base: p.base, c: p.c, blur: S.blur, tint: S.tint, solid: S.solidGlass };
+  // boot.js applies this before the next page draws, for whichever mode is active then.
+  try {
+    localStorage.setItem('glassTabLook', JSON.stringify({ auto: S.appearance === 'auto', mode: m, cls: base, vars: { dark: varsFor('dark'), light: varsFor('light') } }));
+  } catch {}
+  // Shared with the Glass Google content script, which picks the mode Google is in.
+  const pd = presetFor('dark'), pl = presetFor('light');
+  const look = { dark: { base: pd.base, c: pd.c }, light: { base: pl.base, c: pl.c }, blur: S.blur, tint: S.tint, solid: S.solidGlass };
   if (hasChrome && JSON.stringify(look) !== lastLook) { lastLook = JSON.stringify(look); chrome.storage.local.set({ look }); }
 }
+lightQuery.addEventListener('change', () => { if (S.appearance === 'auto') { applyLook(); syncPanel(); } });
 let lastLook = '';
 
 // ---------- glass Google search (opt-in, per device) ----------
@@ -547,20 +589,7 @@ function setQuoteMode(mode) {
 }
 
 function buildPanel() {
-  for (const [key, p] of Object.entries(PRESETS)) {
-    $('#swatches').append(h('button', {
-      'data-key': key, title: p.name, 'aria-label': p.name,
-      style: `background: conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`,
-      onclick: () => { S.wallpaper = key; update(); },
-    }));
-  }
-  for (const [key, c] of Object.entries(CLOCK_COLORS)) {
-    $('#clockColors').append(h('button', {
-      'data-key': key, title: c.name, 'aria-label': `${c.name} clock`,
-      style: `background: rgb(${c.rgb})`,
-      onclick: () => { S.clockColor = key; update(); },
-    }));
-  }
+  $('#appearance').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { S.appearance = b.dataset.mode; update(); }));
   for (const [key, f] of Object.entries(FONTS)) {
     $('#fonts').append(h('button', { 'data-key': key, style: `font-family: ${f.stack.replaceAll('"', "'")}`, onclick: () => { S.clockFont = key; update(); } }, f.name));
   }
@@ -604,10 +633,32 @@ function buildPanel() {
   document.addEventListener('click', (e) => { if (!panel.hidden && !panel.contains(e.target) && !gear.contains(e.target)) setOpen(false); });
 }
 
+// Wallpaper and clock color swatches depend on the mode, so rebuild them when it changes.
+let swatchMode = '';
+function buildSwatches() {
+  const m = mode();
+  if (m === swatchMode) return;
+  swatchMode = m;
+  const set = modeSet(m);
+  $('#swatches').replaceChildren(...Object.entries(set.presets).map(([key, p]) => h('button', {
+    'data-key': key, title: p.name, 'aria-label': p.name,
+    style: `background: conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`,
+    onclick: () => { S[modeSet().wpKey] = key; update(); },
+  })));
+  $('#clockColors').replaceChildren(...Object.entries(set.colors).map(([key, c]) => h('button', {
+    'data-key': key, title: c.name, 'aria-label': `${c.name} clock`,
+    style: `background: rgb(${c.rgb})`,
+    onclick: () => { S[modeSet().colorKey] = key; update(); },
+  })));
+}
+
 function syncPanel() {
+  buildSwatches();
+  const set = modeSet();
   const mark = (sel, active) => document.querySelectorAll(`${sel} button`).forEach((b) => b.classList.toggle('on', active(b)));
-  mark('#swatches', (b) => b.dataset.key === S.wallpaper);
-  mark('#clockColors', (b) => b.dataset.key === S.clockColor);
+  mark('#swatches', (b) => b.dataset.key === S[set.wpKey]);
+  mark('#clockColors', (b) => b.dataset.key === S[set.colorKey]);
+  mark('#appearance', (b) => b.dataset.mode === S.appearance);
   mark('#fonts', (b) => b.dataset.key === S.clockFont);
   mark('#widgetChips', (b) => S.layout.some((w) => w.k === b.dataset.key));
   mark('#styles', (b) => b.dataset.style === S.clockStyle);

@@ -4,18 +4,26 @@
 // its own classes (gt-*), which google.css styles.
 (async () => {
   const root = document.documentElement;
-  if (matchMedia('(prefers-color-scheme: dark)').matches) root.classList.add('glass-google');
-
   const { look } = await chrome.storage.local.get('look');
+
+  // Matches the page to Google's own light or dark mode, using that mode's wallpaper.
+  function setMode(light) {
+    root.classList.add('glass-google');
+    root.classList.toggle('gt-light', light);
+    const p = look?.[light ? 'light' : 'dark'];
+    if (p) {
+      root.style.setProperty('--gt-base', p.base);
+      root.style.setProperty('--gt-c1', p.c[0]);
+      root.style.setProperty('--gt-c2', p.c[1]);
+      root.style.setProperty('--gt-c3', p.c[2]);
+    }
+  }
   if (look) {
-    root.style.setProperty('--gt-base', look.base);
-    root.style.setProperty('--gt-c1', look.c[0]);
-    root.style.setProperty('--gt-c2', look.c[1]);
-    root.style.setProperty('--gt-c3', look.c[2]);
     root.style.setProperty('--gt-blur', `${look.blur}px`);
     root.style.setProperty('--gt-tint', String(look.tint / 100));
     root.classList.toggle('gt-solid', !!look.solid);
   }
+  setMode(matchMedia('(prefers-color-scheme: light)').matches); // best guess until the page loads
 
   const lum = (color) => {
     const m = color.match(/[\d.]+/g);
@@ -51,13 +59,12 @@
 
   let pageBg = '';
   function start() {
-    // Read Google's own background (with our style off) to confirm it is in dark mode.
+    // Read Google's own background (with our style off) to see which mode it is in.
     root.classList.remove('glass-google');
     pageBg = getComputedStyle(document.body).backgroundColor;
     const l = lum(pageBg) ?? lum(getComputedStyle(root).backgroundColor) ?? 0;
-    if (l >= 100) return; // light mode: leave Google alone so text stays readable
     mark();
-    root.classList.add('glass-google');
+    setMode(l >= 128);
     // Results load in pieces, so re-tag when the page changes (at most a few times a second).
     let timer = null;
     new MutationObserver(() => {
