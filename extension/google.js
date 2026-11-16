@@ -1,10 +1,10 @@
 // Content script for Google search results, registered only when the user turns on
-// "Glass Google search". Applies the user's wallpaper and glass settings, which the
-// new tab page saves to chrome.storage.local as "look".
+// "Glass Google search". Google renames its CSS classes often, so instead of relying
+// on them this script finds the parts of the page by structure and tags them with
+// its own classes (gt-*), which google.css styles.
 (async () => {
   const root = document.documentElement;
-  const darkScheme = matchMedia('(prefers-color-scheme: dark)').matches;
-  if (darkScheme) root.classList.add('glass-google');
+  if (matchMedia('(prefers-color-scheme: dark)').matches) root.classList.add('glass-google');
 
   const { look } = await chrome.storage.local.get('look');
   if (look) {
@@ -17,13 +17,54 @@
     root.classList.toggle('gt-solid', !!look.solid);
   }
 
-  // Google can be set to light mode on its own. Glass over a dark wallpaper would
-  // make its dark text unreadable, so only keep the style when Google is dark.
-  const check = () => {
-    root.classList.remove('glass-google'); // read Google's own color, not ours
-    const [r, g, b] = getComputedStyle(document.body).backgroundColor.match(/\d+/g).map(Number);
-    root.classList.toggle('glass-google', 0.299 * r + 0.587 * g + 0.114 * b < 100);
+  const lum = (color) => {
+    const m = color.match(/[\d.]+/g);
+    if (!m || (m[3] !== undefined && +m[3] === 0)) return null; // transparent
+    return 0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2];
   };
-  if (document.body) check();
-  else addEventListener('DOMContentLoaded', check, { once: true });
+  const opaque = (el) => lum(getComputedStyle(el).backgroundColor) !== null;
+
+  function mark() {
+    // Search box: the rounded, filled ancestor of the query field.
+    const q = document.querySelector('textarea[name="q"], input[name="q"]');
+    for (let el = q?.parentElement, i = 0; el && i < 6; el = el.parentElement, i++) {
+      if (parseFloat(getComputedStyle(el).borderRadius) >= 16 && opaque(el)) { el.classList.add('gt-box'); break; }
+    }
+    // The sticky header around it gets a frosted strip so it stays readable while scrolling.
+    for (let el = q?.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (['sticky', 'fixed'].includes(getComputedStyle(el).position)) { el.classList.add('gt-header'); break; }
+    }
+    // Anything painted in Google's page color (wrappers, bars, "Show more" fades)
+    // becomes see-through so the wallpaper shows.
+    for (const el of document.querySelectorAll('body *')) {
+      if (el.matches('.gt-box, .gt-card, .gt-clear, .gt-nofade, img, svg, svg *')) continue;
+      const cs = getComputedStyle(el);
+      if (cs.backgroundColor === pageBg && el.offsetWidth >= innerWidth * 0.4) el.classList.add('gt-clear');
+      if (cs.backgroundImage.includes(pageBg)) el.classList.add('gt-nofade');
+    }
+    // Each search result: the top-level block around a result title.
+    for (const h of document.querySelectorAll('#rso h3, #search h3')) {
+      const card = h.closest('#rso > *') || h.closest('[data-hveid]');
+      if (card && card.offsetHeight > 40) card.classList.add('gt-card');
+    }
+  }
+
+  let pageBg = '';
+  function start() {
+    // Read Google's own background (with our style off) to confirm it is in dark mode.
+    root.classList.remove('glass-google');
+    pageBg = getComputedStyle(document.body).backgroundColor;
+    const l = lum(pageBg) ?? lum(getComputedStyle(root).backgroundColor) ?? 0;
+    if (l >= 100) return; // light mode: leave Google alone so text stays readable
+    mark();
+    root.classList.add('glass-google');
+    // Results load in pieces, so re-tag when the page changes (at most a few times a second).
+    let timer = null;
+    new MutationObserver(() => {
+      if (timer) return;
+      timer = setTimeout(() => { timer = null; mark(); }, 250);
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
 })();

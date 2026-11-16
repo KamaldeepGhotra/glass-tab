@@ -49,7 +49,7 @@ html { background: var(--base); }
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 -1px 0 rgba(255, 255, 255, .06), 0 10px 30px rgba(0, 0, 0, .3);
   color: #fff;
 }
-.liquid .glass.liquid { backdrop-filter: url(#liquid) blur(var(--blur)) saturate(170%); }
+.liquid .glass.liquid { backdrop-filter: url(#liquid-filter) blur(var(--blur)) saturate(170%); }
 /* Reduce transparency: solid surfaces for readability, like the iOS setting */
 .solid .glass, .solid .glass.liquid { background: rgba(30, 32, 44, .92); backdrop-filter: none; }
 
@@ -114,12 +114,16 @@ main { height: 100%; display: flex; flex-direction: column; align-items: center;
 .muted { opacity: .65; font-size: 12px; font-weight: 400; }
 
 /* Edit mode */
-.editing .widget { cursor: grab; animation: jiggle .3s ease-in-out infinite alternate; }
+.widget { user-select: none; -webkit-user-select: none; }
+.widget input { user-select: text; -webkit-user-select: text; }
+.widget a, .widget img { -webkit-user-drag: none; }
+.editing .widget { cursor: grab; touch-action: none; animation: jiggle .3s ease-in-out infinite alternate; }
+.editing .widget.dragging { cursor: grabbing; animation: none; z-index: 10; transition: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 24px 50px rgba(0,0,0,.45); }
+.editing .widget:not(.dragging) { transition: transform .2s; }
 .editing .widget:nth-child(2n) { animation-delay: -.15s; }
 .editing .widget > :not(.wctl) { pointer-events: none; }
 @keyframes jiggle { from { transform: rotate(-.6deg); } to { transform: rotate(.6deg); } }
 @media (prefers-reduced-motion: reduce) { .editing .widget { animation: none; outline: 1px dashed rgba(255,255,255,.5); } }
-.widget.drag-over { outline: 2px dashed rgba(255, 255, 255, .7); outline-offset: 2px; }
 .wctl { display: none; position: absolute; top: 8px; right: 8px; gap: 4px; z-index: 1; }
 .editing .wctl { display: flex; }
 .wctl button { border: 0; border-radius: 999px; background: rgba(255,255,255,.88); color: #111; font: inherit; font-size: 11px; font-weight: 600; padding: 2px 8px; cursor: pointer; }

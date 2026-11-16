@@ -48,6 +48,26 @@ const QUOTES = [
   ['What we think, we become.', 'Buddha'],
   ['Dwell on the beauty of life.', 'Marcus Aurelius'],
   ['Quality is not an act, it is a habit.', 'Aristotle'],
+  ['The journey of a thousand miles begins with one step.', 'Lao Tzu'],
+  ['Act as if what you do makes a difference. It does.', 'William James'],
+  ['Little by little, one travels far.', 'J. R. R. Tolkien'],
+  ['Do what you can, with what you have, where you are.', 'Theodore Roosevelt'],
+  ['It always seems impossible until it is done.', 'Nelson Mandela'],
+  ['Whatever you are, be a good one.', 'Abraham Lincoln'],
+  ['Turn your face to the sun and the shadows fall behind you.', 'Maori proverb'],
+  ['The best way out is always through.', 'Robert Frost'],
+  ['Knowing is not enough; we must apply.', 'Johann Wolfgang von Goethe'],
+  ['Begin anywhere.', 'John Cage'],
+  ['In the middle of difficulty lies opportunity.', 'Albert Einstein'],
+  ['The present moment always will have been.', 'Rainer Maria Rilke'],
+  ['Waste no more time arguing what a good man should be. Be one.', 'Marcus Aurelius'],
+  ['He who has a why to live can bear almost any how.', 'Friedrich Nietzsche'],
+  ['Make each day your masterpiece.', 'John Wooden'],
+  ['Simplicity is the keynote of all true elegance.', 'Coco Chanel'],
+  ['What you seek is seeking you.', 'Rumi'],
+  ['Done is better than perfect.', 'Sheryl Sandberg'],
+  ['Energy and persistence conquer all things.', 'Benjamin Franklin'],
+  ['The obstacle is the way.', 'Marcus Aurelius'],
 ];
 
 const DEFAULTS = {
@@ -119,8 +139,17 @@ function favicon(url) {
   return `${chrome.runtime.getURL('/_favicon/')}?pageUrl=${encodeURIComponent(url)}&size=32`;
 }
 
+// A new quote on every new tab, never the same one twice in a row.
+const pageQuote = (() => {
+  let last = -1;
+  try { last = Number(localStorage.getItem('glassTabQuote') ?? -1); } catch {}
+  let i = Math.floor(Math.random() * QUOTES.length);
+  if (i === last) i = (i + 1) % QUOTES.length;
+  try { localStorage.setItem('glassTabQuote', String(i)); } catch {}
+  return QUOTES[i];
+})();
 function todaysQuote() {
-  return QUOTES[Math.floor(Date.now() / 86400000) % QUOTES.length];
+  return pageQuote;
 }
 
 // ---------- look ----------
@@ -159,16 +188,21 @@ async function glassGoogleOn() {
 async function setGlassGoogle(on) {
   const box = $('#glassGoogle');
   if (!hasChrome) { box.checked = false; return; }
-  if (on) {
-    // Must be requested straight from the click, before any other await.
-    if (!(await chrome.permissions.request({ origins: GOOGLE.origins }))) { box.checked = false; return; }
-    await chrome.scripting.unregisterContentScripts({ ids: [GOOGLE.id] }).catch(() => {});
-    await chrome.scripting.registerContentScripts([{
-      id: GOOGLE.id, matches: ['https://www.google.com/search*'], css: ['google.css'], js: ['google.js'], runAt: 'document_start',
-    }]);
-  } else {
-    await chrome.scripting.unregisterContentScripts({ ids: [GOOGLE.id] }).catch(() => {});
-    await chrome.permissions.remove({ origins: GOOGLE.origins }).catch(() => {});
+  try {
+    if (on) {
+      // Must be requested straight from the click, before any other await.
+      if (!(await chrome.permissions.request({ origins: GOOGLE.origins }))) { box.checked = false; return; }
+      await chrome.scripting.unregisterContentScripts({ ids: [GOOGLE.id] }).catch(() => {});
+      await chrome.scripting.registerContentScripts([{
+        id: GOOGLE.id, matches: ['https://www.google.com/search*'], css: ['google.css'], js: ['google.js'], runAt: 'document_start',
+      }]);
+      $('#googleNote').textContent = 'On. Reload any open Google search tabs to see it.';
+    } else {
+      await chrome.scripting.unregisterContentScripts({ ids: [GOOGLE.id] }).catch(() => {});
+      await chrome.permissions.remove({ origins: GOOGLE.origins }).catch(() => {});
+    }
+  } catch (err) {
+    $('#googleNote').textContent = `Couldn't turn this on: ${err.message}`;
   }
   box.checked = await glassGoogleOn();
 }
@@ -361,47 +395,72 @@ function quoteWidget() {
 const RENDER = { weather: weatherWidget, todo: todoWidget, focus: focusWidget, sites: sitesWidget, recent: recentWidget, quote: quoteWidget };
 
 // ---------- layout and edit mode ----------
-let dragIdx = null;
-
-function removeWidget(i) {
-  const [w] = S.layout.splice(i, 1);
-  if (w.k === 'quote') S.quote = 'off';
+// Widgets are identified by key (each widget appears at most once).
+function removeWidget(k) {
+  S.layout = S.layout.filter((w) => w.k !== k);
+  if (k === 'quote') S.quote = 'off';
   update();
   renderWidgets();
 }
-function cycleSize(i) {
-  const w = S.layout[i];
-  const sizes = WIDGETS[w.k].sizes;
+function cycleSize(k) {
+  const w = S.layout.find((x) => x.k === k);
+  const sizes = WIDGETS[k].sizes;
   w.size = sizes[(sizes.indexOf(w.size) + 1) % sizes.length];
   save();
   renderWidgets();
 }
 
-function buildWidget({ k, size }, i) {
+function buildWidget({ k, size }) {
   const el = RENDER[k](size);
   el.classList.add('widget', 'glass', `size-${size}`);
+  el.dataset.k = k;
   const ctl = h('div', { class: 'wctl' });
-  if (WIDGETS[k].sizes.length > 1) ctl.append(h('button', { 'aria-label': `Change ${WIDGETS[k].name} size`, onclick: () => cycleSize(i) }, size));
-  ctl.append(h('button', { 'aria-label': `Remove ${WIDGETS[k].name}`, onclick: () => removeWidget(i) }, '×'));
+  if (WIDGETS[k].sizes.length > 1) ctl.append(h('button', { 'aria-label': `Change ${WIDGETS[k].name} size`, onclick: () => cycleSize(k) }, size));
+  ctl.append(h('button', { 'aria-label': `Remove ${WIDGETS[k].name}`, onclick: () => removeWidget(k) }, '×'));
   el.append(ctl);
-
-  el.draggable = editing;
-  el.addEventListener('dragstart', (e) => { dragIdx = i; e.dataTransfer.effectAllowed = 'move'; });
-  el.addEventListener('dragover', (e) => { if (dragIdx === null) return; e.preventDefault(); el.classList.add('drag-over'); });
-  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
-  el.addEventListener('dragend', () => { dragIdx = null; });
-  el.addEventListener('drop', (e) => {
-    e.preventDefault();
-    el.classList.remove('drag-over');
-    if (dragIdx !== null && dragIdx !== i) {
-      const [moved] = S.layout.splice(dragIdx, 1);
-      S.layout.splice(i, 0, moved);
-      save();
-      renderWidgets();
-    }
-    dragIdx = null;
-  });
   return el;
+}
+
+// Dragging uses pointer events (not HTML drag and drop): the widget follows the
+// pointer and the others move out of the way live, like the iOS home screen.
+let drag = null;
+
+function place(e) {
+  drag.el.style.transform = `translate(${e.clientX - drag.offX - drag.base.left}px, ${e.clientY - drag.offY - drag.base.top}px) scale(1.04)`;
+}
+function startDrag(el, e) {
+  const base = el.getBoundingClientRect();
+  drag = { el, id: e.pointerId, offX: e.clientX - base.left, offY: e.clientY - base.top, base, last: null };
+  el.classList.add('dragging');
+  try { el.setPointerCapture(e.pointerId); } catch {}
+  place(e);
+}
+function moveDrag(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const { el } = drag;
+  place(e);
+  el.style.pointerEvents = 'none';
+  const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('.widget');
+  el.style.pointerEvents = '';
+  // Only swap once per widget entered, so neighbours don't flip back and forth.
+  if (!over || over === el) { drag.last = null; return; }
+  if (over === drag.last) return;
+  drag.last = over;
+  const grid = $('#widgets');
+  const kids = [...grid.children];
+  grid.insertBefore(el, kids.indexOf(el) < kids.indexOf(over) ? over.nextSibling : over);
+  // The grid reflowed: measure the new slot so the widget stays under the pointer.
+  el.style.transform = 'none';
+  drag.base = el.getBoundingClientRect();
+  place(e);
+}
+function endDrag(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  drag.el.classList.remove('dragging');
+  drag.el.style.transform = '';
+  S.layout = [...$('#widgets').children].map((c) => S.layout.find((w) => w.k === c.dataset.k));
+  save();
+  drag = null;
 }
 
 function renderWidgets() {
@@ -414,18 +473,36 @@ function setEditing(on) {
   document.body.classList.toggle('editing', on);
   $('#doneEdit').hidden = !on;
   if (on) $('#panel').hidden = true;
-  renderWidgets();
 }
 
-// Press and hold a widget to start editing, like iOS.
-let pressTimer;
-$('#widgets').addEventListener('pointerdown', (e) => {
-  if (editing || !e.target.closest('.widget') || e.target.closest('input, button, a')) return;
-  pressTimer = setTimeout(() => setEditing(true), 600);
+// Press and hold a widget to start editing, then keep holding to drag it, like iOS.
+// While editing, any widget can be dragged straight away.
+let press = null;
+const grid = $('#widgets');
+grid.addEventListener('pointerdown', (e) => {
+  const w = e.target.closest('.widget');
+  if (!w || e.button !== 0) return;
+  if (editing) {
+    if (e.target.closest('.wctl')) return;
+    e.preventDefault();
+    startDrag(w, e);
+    return;
+  }
+  if (e.target.closest('input, button')) return;
+  press = { x: e.clientX, y: e.clientY, timer: setTimeout(() => { press = null; setEditing(true); startDrag(w, e); }, 500) };
 });
-['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => $('#widgets').addEventListener(t, () => clearTimeout(pressTimer)));
-// While editing, clicks only reach the size and remove buttons.
-$('#widgets').addEventListener('click', (e) => { if (editing && !e.target.closest('.wctl')) e.preventDefault(); }, true);
+grid.addEventListener('pointermove', (e) => {
+  if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 8) { clearTimeout(press.timer); press = null; }
+  moveDrag(e);
+});
+for (const t of ['pointerup', 'pointercancel']) grid.addEventListener(t, (e) => {
+  if (press) { clearTimeout(press.timer); press = null; }
+  endDrag(e);
+});
+// No browser drag of links or icons (that was the stray globe), and while editing,
+// clicks only reach the size and remove buttons.
+grid.addEventListener('dragstart', (e) => e.preventDefault());
+grid.addEventListener('click', (e) => { if (editing && !e.target.closest('.wctl')) e.preventDefault(); }, true);
 $('#doneEdit').addEventListener('click', () => setEditing(false));
 
 // ---------- search ----------

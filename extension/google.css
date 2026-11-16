@@ -1,7 +1,7 @@
 /* Glass Google search. Only active when google.js adds .glass-google to <html>
    (it does so only when Google is in dark mode, so text stays readable).
-   Google's class names change from time to time; each rule is independent so a
-   broken selector only loses that one piece of styling. */
+   google.js tags Google's elements with gt-* classes by page structure, so these
+   rules don't depend on Google's own class names. */
 
 html.glass-google {
   --gt-base: #07080d;
@@ -19,37 +19,37 @@ html.glass-google {
 }
 
 /* Let the wallpaper show through Google's flat backgrounds */
-html.glass-google body,
-html.glass-google .zNsLfb,
-html.glass-google #fbar,
-html.glass-google #appbar,
-html.glass-google .appbar { background: transparent !important; }
-
-/* Sticky header becomes a frosted strip while scrolling */
-html.glass-google #searchform .sfbg,
-html.glass-google .sfbg { background: color-mix(in srgb, var(--gt-base) 45%, transparent) !important; backdrop-filter: blur(24px) saturate(160%); }
+html.glass-google body { background: transparent !important; }
+html.glass-google .gt-clear { background-color: transparent !important; }
+/* Google's "Show more" fades are painted in its page color; swap them for a blur fade. */
+html.glass-google .gt-nofade {
+  background-image: none !important;
+  backdrop-filter: blur(14px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 55%);
+  mask-image: linear-gradient(to bottom, transparent, #000 55%);
+}
+/* Sticky header keeps a frosted strip so text stays readable while scrolling */
+html.glass-google .gt-header { background: color-mix(in srgb, var(--gt-base) 40%, transparent) !important; backdrop-filter: blur(24px) saturate(160%); }
 
 /* Search box */
-html.glass-google .RNNXgb,
-html.glass-google .SDkEP {
+html.glass-google .gt-box {
   background: rgba(255, 255, 255, var(--gt-tint)) !important;
   backdrop-filter: blur(var(--gt-blur)) saturate(170%);
   border: 1px solid rgba(255, 255, 255, .18) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 8px 24px rgba(0, 0, 0, .25) !important;
 }
-html.glass-google .SDkEP { border: 0 !important; box-shadow: none !important; background: transparent !important; }
 
 /* Each result becomes a glass card */
-html.glass-google #rso .MjjYud:has(h3) {
-  background: rgba(255, 255, 255, var(--gt-tint));
+html.glass-google .gt-card {
+  background: rgba(255, 255, 255, var(--gt-tint)) !important;
   backdrop-filter: blur(var(--gt-blur)) saturate(170%);
   border: 1px solid rgba(255, 255, 255, .14);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 8px 24px rgba(0, 0, 0, .22);
   border-radius: 22px;
-  padding: 14px 18px;
-  margin-bottom: 14px;
+  padding: 14px 18px !important;
+  margin-bottom: 14px !important;
 }
 
 /* Reduce transparency setting */
-html.glass-google.gt-solid .RNNXgb,
-html.glass-google.gt-solid #rso .MjjYud:has(h3) { background: rgba(30, 32, 44, .94) !important; backdrop-filter: none; }
+html.glass-google.gt-solid .gt-box,
+html.glass-google.gt-solid .gt-card { background: rgba(30, 32, 44, .94) !important; backdrop-filter: none; }
