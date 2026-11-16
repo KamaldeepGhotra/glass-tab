@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Glass Tab Theme",
+  "version": "0.1.0",
+  "description": "Dark toolbar that blends into the Glass Tab new tab page.",
+  "theme": {
+    "colors": {
+      "frame": [11, 13, 20],
+      "frame_inactive": [11, 13, 20],
+      "background_tab": [11, 13, 20],
+      "toolbar": [22, 26, 38],
+      "toolbar_text": [201, 207, 220],
+      "toolbar_button_icon": [201, 207, 220],
+      "tab_text": [230, 233, 240],
+      "tab_background_text": [150, 156, 170],
+      "bookmark_text": [201, 207, 220],
+      "omnibox_background": [14, 17, 26],
+      "omnibox_text": [220, 224, 232],
+      "ntp_background": [7, 8, 13],
+      "ntp_text": [230, 233, 240]
+    }
+  }
+}

@@ -1,0 +1,184 @@
+// Injected into the current tab when the shortcut is pressed.
+// Runs again on every press, so it toggles the bar if it already exists.
+(() => {
+  if (window.__glassBar) { window.__glassBar.toggle(); return; }
+
+  const host = document.createElement('glass-bar-host');
+  host.style.cssText = 'all: initial; position: fixed; inset: 0; z-index: 2147483647; display: none;';
+  const root = host.attachShadow({ mode: 'closed' });
+  root.innerHTML = `
+<style>
+  :host { all: initial; }
+  * { box-sizing: border-box; }
+  .scrim { position: fixed; inset: 0; }
+  .bar {
+    position: fixed; left: 50%; top: 18vh; transform: translateX(-50%);
+    width: min(680px, 90vw); border-radius: 26px; padding: 6px;
+    font: 15px -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    color: var(--fg);
+    background: var(--glass);
+    backdrop-filter: blur(var(--blur)) saturate(180%);
+    border: 1px solid var(--edge);
+    box-shadow: inset 0 1px 0 var(--shine), inset 0 -1px 0 rgba(255,255,255,.06), 0 24px 60px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.12);
+    animation: pop .22s cubic-bezier(.2,.9,.3,1.2);
+  }
+  /* Less blur in liquid mode so the bending stays visible, like iOS. */
+  .liquid .bar { backdrop-filter: url(#gb-liquid) blur(calc(var(--blur) / 3)) saturate(180%); }
+  @keyframes pop { from { opacity: 0; transform: translateX(-50%) scale(.96); } }
+  @media (prefers-reduced-motion: reduce) { .bar { animation: none; } }
+  .light { --fg: #111; --sub: rgba(0,0,0,.55); --edge: rgba(255,255,255,.7); --shine: rgba(255,255,255,.9); --hover: rgba(0,0,0,.07); }
+  .dark  { --fg: #fff; --sub: rgba(255,255,255,.6); --edge: rgba(255,255,255,.18); --shine: rgba(255,255,255,.3); --hover: rgba(255,255,255,.1); }
+  .row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+  .row svg { flex: none; opacity: .75; }
+  input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--fg); font: inherit; font-size: 18px; }
+  input::placeholder { color: var(--sub); }
+  kbd { font: inherit; font-size: 11px; color: var(--sub); border: 1px solid var(--edge); border-radius: 6px; padding: 2px 6px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  ul:not(:empty) { border-top: 1px solid var(--hover); padding-top: 4px; margin-top: 2px; }
+  li { display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-radius: 18px; cursor: pointer; }
+  li.sel { background: var(--hover); }
+  li img, li .ic { width: 18px; height: 18px; flex: none; display: grid; place-items: center; }
+  .txt { flex: 1; min-width: 0; }
+  .title, .url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .url { font-size: 12px; color: var(--sub); }
+  .hint { font-size: 12px; color: var(--sub); flex: none; }
+</style>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="gb-liquid" x="0" y="0" width="100%" height="100%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="4" result="noise"/>
+    <feGaussianBlur in="noise" stdDeviation="2" result="soft"/>
+    <feDisplacementMap in="SourceGraphic" in2="soft" scale="60" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+<div class="wrap">
+  <div class="scrim"></div>
+  <div class="bar" role="dialog" aria-label="Glass search">
+    <div class="row">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input placeholder="Search, type a URL, or find a tab" autocomplete="off" spellcheck="false" aria-label="Search">
+      <kbd>esc</kbd>
+    </div>
+    <ul role="listbox"></ul>
+  </div>
+</div>`;
+
+  const wrap = root.querySelector('.wrap');
+  const input = root.querySelector('input');
+  const list = root.querySelector('ul');
+  let items = [];
+  let sel = 0;
+  let lastFocus = null;
+
+  const SEARCH_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  const LINK_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1"/><path d="M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/></svg>';
+
+  function pageIsLight() {
+    for (const el of [document.body, document.documentElement]) {
+      if (!el) continue;
+      const m = getComputedStyle(el).backgroundColor.match(/[\d.]+/g);
+      if (m && (m[3] === undefined || +m[3] > 0)) {
+        const [r, g, b] = m.map(Number);
+        return 0.299 * r + 0.587 * g + 0.114 * b > 150;
+      }
+    }
+    return true; // transparent page background renders white
+  }
+
+  function favicon(url) {
+    return `${chrome.runtime.getURL('/_favicon/')}?pageUrl=${encodeURIComponent(url)}&size=32`;
+  }
+
+  function looksLikeUrl(q) {
+    return /^https?:\/\//i.test(q) || (!/\s/.test(q) && /^[^.]+\.[^.]{2,}/.test(q));
+  }
+
+  function render() {
+    list.replaceChildren(...items.map((it, i) => {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      if (i === sel) li.className = 'sel';
+      let icon;
+      if (it.kind === 'tab') {
+        icon = document.createElement('img');
+        icon.src = favicon(it.url);
+        icon.alt = '';
+        icon.onerror = () => icon.replaceWith(Object.assign(document.createElement('span'), { className: 'ic', innerHTML: LINK_ICON }));
+      } else {
+        icon = Object.assign(document.createElement('span'), { className: 'ic', innerHTML: it.kind === 'url' ? LINK_ICON : SEARCH_ICON });
+      }
+      const txt = document.createElement('div');
+      txt.className = 'txt';
+      const title = Object.assign(document.createElement('div'), { className: 'title', textContent: it.title });
+      txt.append(title);
+      if (it.sub) txt.append(Object.assign(document.createElement('div'), { className: 'url', textContent: it.sub }));
+      const hint = Object.assign(document.createElement('span'), { className: 'hint', textContent: it.hint });
+      li.append(icon, txt, hint);
+      li.addEventListener('mousemove', () => { if (sel !== i) { sel = i; render(); } });
+      li.addEventListener('click', () => run(it));
+      return li;
+    }));
+  }
+
+  let queryId = 0;
+  async function update() {
+    const q = input.value.trim();
+    const id = ++queryId;
+    if (!q) { items = []; render(); return; }
+    const first = looksLikeUrl(q)
+      ? { kind: 'url', title: q, sub: 'Open site', hint: 'Enter' }
+      : { kind: 'search', title: q, sub: 'Search', hint: 'Enter' };
+    items = [first];
+    sel = 0;
+    render();
+    const tabs = await chrome.runtime.sendMessage({ type: 'tabs', q }).catch(() => []);
+    if (id !== queryId) return; // a newer keystroke already ran
+    items = [first, ...(tabs || []).map((t) => ({ kind: 'tab', id: t.id, windowId: t.windowId, url: t.url, title: t.title || t.url, sub: t.url, hint: 'Switch to tab' }))];
+    render();
+  }
+
+  function run(it) {
+    const q = input.value.trim();
+    close();
+    if (it.kind === 'url') location.href = /^https?:\/\//i.test(q) ? q : `https://${q}`;
+    else if (it.kind === 'search') chrome.runtime.sendMessage({ type: 'search', q });
+    else if (it.kind === 'tab') chrome.runtime.sendMessage({ type: 'switch', id: it.id, windowId: it.windowId });
+  }
+
+  async function open() {
+    const s = await chrome.storage.sync.get(['blur', 'tint', 'liquid']).catch(() => ({}));
+    const light = pageIsLight();
+    const tint = (s.tint ?? 10) / 100;
+    wrap.className = `wrap ${light ? 'light' : 'dark'} ${s.liquid === false ? '' : 'liquid'}`;
+    wrap.style.setProperty('--blur', `${s.blur ?? 18}px`);
+    // Light pages need a brighter glass to read as glass instead of a grey smudge.
+    wrap.style.setProperty('--glass', light ? `rgba(255,255,255,${0.3 + tint})` : `rgba(255,255,255,${tint})`);
+    lastFocus = document.activeElement;
+    host.style.display = 'block';
+    input.value = '';
+    items = [];
+    render();
+    input.focus();
+  }
+
+  function close() {
+    host.style.display = 'none';
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  function toggle() { host.style.display === 'none' ? open() : close(); }
+
+  input.addEventListener('input', update);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    else if (e.key === 'ArrowDown' && items.length) { e.preventDefault(); sel = (sel + 1) % items.length; render(); }
+    else if (e.key === 'ArrowUp' && items.length) { e.preventDefault(); sel = (sel - 1 + items.length) % items.length; render(); }
+    else if (e.key === 'Enter' && items[sel]) { e.preventDefault(); run(items[sel]); }
+  });
+  root.querySelector('.scrim').addEventListener('click', close);
+  // Keep the page's own keyboard shortcuts from firing while typing in the bar.
+  for (const type of ['keydown', 'keyup', 'keypress']) host.addEventListener(type, (e) => e.stopPropagation());
+
+  document.documentElement.append(host);
+  window.__glassBar = { toggle };
+  open();
+})();

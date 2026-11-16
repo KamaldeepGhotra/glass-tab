@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>New Tab</title>
+  <link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <filter id="liquid" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="4" result="noise"/>
+      <feGaussianBlur in="noise" stdDeviation="2" result="soft"/>
+      <feDisplacementMap in="SourceGraphic" in2="soft" scale="60" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </svg>
+
+  <div id="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+  <div id="fade" aria-hidden="true"></div>
+
+  <main>
+    <div id="date"></div>
+    <div id="clock"></div>
+    <form id="search" class="glass liquid" role="search">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="q" type="text" placeholder="Search or type a URL" autocomplete="off" aria-label="Search or type a URL">
+    </form>
+    <section id="widgets"></section>
+  </main>
+
+  <button id="gear" class="glass" aria-label="Customize" aria-expanded="false">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+  </button>
+
+  <aside id="panel" hidden aria-label="Customize">
+    <h2>Customize</h2>
+
+    <section>
+      <h3>Wallpaper</h3>
+      <div id="swatches" class="swatches"></div>
+      <label class="toggle"><input type="checkbox" id="animated"> Animated background</label>
+    </section>
+
+    <section>
+      <h3>Glass</h3>
+      <label class="slider">Clarity <input type="range" id="blur" min="2" max="30" step="1"></label>
+      <label class="slider">Tint <input type="range" id="tint" min="4" max="24" step="1"></label>
+      <label class="toggle"><input type="checkbox" id="liquid"> Liquid refraction on search bar</label>
+    </section>
+
+    <section>
+      <h3>Clock</h3>
+      <div id="styles" class="chips">
+        <button data-style="solid">Solid</button>
+        <button data-style="clear">Clear glass</button>
+        <button data-style="frost">Frosted glass</button>
+      </div>
+      <div id="fonts" class="chips"></div>
+      <label class="slider">Size <input type="range" id="size" min="64" max="200" step="2"></label>
+      <label class="toggle"><input type="checkbox" id="hour24"> 24-hour time</label>
+    </section>
+
+    <section>
+      <h3>Widgets <span class="muted">up to 4</span></h3>
+      <div id="widgetChips" class="chips"></div>
+      <label class="field">Weather city <input id="city" placeholder="Toronto" maxlength="60"></label>
+      <label class="field">Units
+        <select id="units"><option value="c">°C</option><option value="f">°F</option></select>
+      </label>
+    </section>
+  </aside>
+
+  <script src="newtab.js"></script>
+</body>
+</html>
