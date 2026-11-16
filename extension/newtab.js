@@ -664,3 +664,16 @@ tick();
     }
   });
 })();
+
+// ---------- footer hint ----------
+// Chrome adds its own footer to extension new tab pages. Show a one-time hint on
+// how to hide it; "Got it" dismisses it for good.
+try {
+  if (!localStorage.getItem('glassTabFooterTip')) {
+    $('#footerTip').hidden = false;
+    $('#footerTipClose').addEventListener('click', () => {
+      $('#footerTip').hidden = true;
+      try { localStorage.setItem('glassTabFooterTip', '1'); } catch {}
+    });
+  }
+} catch {}

@@ -212,3 +212,9 @@ main { height: 100%; display: flex; flex-direction: column; align-items: center;
 .toggle { display: flex; align-items: center; gap: 8px; margin: 6px 0; cursor: pointer; }
 .toggle input { accent-color: #fff; }
 .note { font-size: 12px; opacity: .7; margin: -4px 0 8px; }
+
+/* One-time hint about hiding Chrome's new tab footer */
+#footerTip { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 20px; border-radius: 999px; font-size: 13px; z-index: 4; animation: tipIn .5s ease-out both; max-width: calc(100vw - 120px); }
+#footerTip[hidden] { display: none; }
+#footerTip .chip { flex: none; }
+@keyframes tipIn { from { opacity: 0; transform: translate(-50%, 8px); } }
