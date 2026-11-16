@@ -29,7 +29,6 @@
     }
   },
   "permissions": ["storage", "topSites", "sessions", "search", "favicon", "activeTab", "scripting", "tabs", "alarms", "notifications"],
-  "optional_permissions": ["geolocation"],
   "optional_host_permissions": ["https://www.google.com/*"],
   "host_permissions": [
     "https://api.open-meteo.com/*",

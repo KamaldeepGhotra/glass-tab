@@ -32,7 +32,7 @@ After editing files, click the reload icon on the Glass Tab card in `chrome://ex
 
 - The toolbar color in `theme/manifest.json` (`toolbar`) must match `--bar` in `extension/newtab.css`, or a line shows where they meet.
 - Settings and to-dos sync through Chrome sync. A local copy in `localStorage` lets the page draw with the right wallpaper before sync storage answers (see `boot.js`).
-- Weather comes from Open-Meteo (free, no key) using the city you type, or your coordinates if you choose "Use my location" (location permission is only requested then).
+- Weather comes from Open-Meteo (free, no key) using the city you type, or your coordinates if you choose "Use my location" (Chrome's normal location prompt appears only then; no manifest permission).
 - The focus timer is shared by all tabs and finishes in the background worker, which shows a notification.
 - **Glass Google search results** is opt-in (settings, Glass section). Turning it on asks for access to google.com and registers `google.js` and `google.css` for search pages; turning it off removes both. It only applies when Google is in dark mode, and only on google.com. Google's class names change occasionally, so check these styles after big Google redesigns.
 - A setup guide (`welcome.html`) opens on first install. Set `THEME_STORE_URL` in `welcome.js` once the theme is published.

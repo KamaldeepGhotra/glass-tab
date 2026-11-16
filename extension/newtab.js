@@ -523,9 +523,10 @@ if (hasChrome) chrome.runtime.onMessage.addListener((msg) => { if (msg.type === 
 async function useMyLocation() {
   const btn = $('#useLocation');
   try {
-    if (hasChrome && !(await chrome.permissions.request({ permissions: ['geolocation'] }))) return;
+    // Chrome shows its normal location prompt for the new tab page; no manifest
+    // permission (and no install warning) needed.
     btn.textContent = 'Finding you…';
-    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
+    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 60000 }));
     S.coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
     S.useLocation = true;
     S.city = '';
