@@ -1,20 +1,24 @@
 // Curated presets per mode, so every wallpaper blends into the toolbar.
 const PRESETS = {
-  aurora:   { name: 'Aurora',   base: '#07080d', c: ['#1d6f8a', '#4a2b7c', '#1e7f62'] },
-  midnight: { name: 'Midnight', base: '#05060b', c: ['#1b2a6a', '#0d3f78', '#2a1a52'] },
-  ember:    { name: 'Ember',    base: '#0c0707', c: ['#8a2e1e', '#9c5a18', '#4e1628'] },
-  dusk:     { name: 'Dusk',     base: '#0c0710', c: ['#8a2f5c', '#4f2a80', '#9a4a62'] },
-  forest:   { name: 'Forest',   base: '#050a07', c: ['#1f5e36', '#0f4a46', '#4a6420'] },
-  graphite: { name: 'Graphite', base: '#0a0a0c', c: ['#34373f', '#22242a', '#4a4d55'] },
+  aurora:   { name: 'Aurora',   base: '#05080d', c: ['#12a4b8', '#6a30d8', '#1db87f'] },
+  midnight: { name: 'Midnight', base: '#04060d', c: ['#2350d8', '#0b6fc4', '#4a22a8'] },
+  rose:     { name: 'Rose',     base: '#0e060a', c: ['#e0438f', '#7d2a9a', '#ff7a9c'] },
+  sunset:   { name: 'Sunset',   base: '#0e0707', c: ['#ff6a3d', '#c4195e', '#ffad42'] },
+  lagoon:   { name: 'Lagoon',   base: '#03090c', c: ['#00b6c9', '#0a5cff', '#00d39c'] },
+  neon:     { name: 'Neon',     base: '#07050f', c: ['#ff2e93', '#6200ff', '#00d9ff'] },
+  graphite: { name: 'Graphite', base: '#0a0a0c', c: ['#454955', '#25272d', '#666b78'] },
 };
 const LIGHT_PRESETS = {
-  mist:  { name: 'Mist',  base: '#eef1f7', c: ['#a9c4ff', '#d7b8ff', '#9fe0e6'] },
-  dawn:  { name: 'Dawn',  base: '#f7efe9', c: ['#ffc2a8', '#ffb0c8', '#ffe0a3'] },
-  sky:   { name: 'Sky',   base: '#ecf3fa', c: ['#9fd0ff', '#b8c8ff', '#a7ecff'] },
-  lilac: { name: 'Lilac', base: '#f3eff9', c: ['#cdb6ff', '#f2b8e6', '#b9c7ff'] },
-  sage:  { name: 'Sage',  base: '#eef3ee', c: ['#b6e2c1', '#cfe8a9', '#a8d8d6'] },
-  pearl: { name: 'Pearl', base: '#f2f2f4', c: ['#d9dbe3', '#e9e3dc', '#d3dbe6'] },
+  mist:    { name: 'Mist',    base: '#edf1f9', c: ['#86aaff', '#c39bff', '#73d9e4'] },
+  blossom: { name: 'Blossom', base: '#fcf0f5', c: ['#ff8fbf', '#ffb3d1', '#ec9cff'] },
+  sorbet:  { name: 'Sorbet',  base: '#fdf2ec', c: ['#ff9470', '#ffc561', '#ff7aa5'] },
+  coast:   { name: 'Coast',   base: '#eaf6f8', c: ['#4fd0df', '#74a3ff', '#76e6bb'] },
+  citrus:  { name: 'Citrus',  base: '#f9f8ea', c: ['#ffd24f', '#9fe063', '#ffaa5e'] },
+  prism:   { name: 'Prism',   base: '#f4f2fb', c: ['#ff8ab5', '#78acff', '#8eeec4'] },
+  pearl:   { name: 'Pearl',   base: '#f2f2f4', c: ['#d4d7e1', '#e8e0d6', '#cdd7e6'] },
 };
+// Wallpapers that were retired, mapped to the closest current one.
+const RETIRED = { ember: 'sunset', dusk: 'rose', forest: 'lagoon', dawn: 'sorbet', sky: 'coast', lilac: 'prism', sage: 'coast' };
 
 // System fonts only, so nothing is downloaded. Mac fonts first, Windows fallbacks after.
 const SYSTEM = '"SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif';
@@ -116,6 +120,7 @@ function migrate(raw) {
     if (s.widgets.includes('quote')) { s.quote = 'widget'; s.layout.push({ k: 'quote', size: 'M' }); }
   }
   delete s.widgets;
+  for (const k of ['wallpaper', 'wallpaperLight']) if (RETIRED[s[k]]) s[k] = RETIRED[s[k]];
   const merged = { ...DEFAULTS, ...s };
   merged.layout = merged.layout.filter((w) => WIDGETS[w.k] && WIDGETS[w.k].sizes.includes(w.size));
   return merged;
