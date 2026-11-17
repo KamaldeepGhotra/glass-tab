@@ -6,6 +6,7 @@ function waves(name, tones) {
 
 // Curated presets per mode, so every wallpaper blends into the toolbar.
 const PRESETS = {
+  ink:      waves('Ink',    ['#9a9a9a', '#767676', '#575757', '#3d3d3d', '#282828', '#171717', '#0a0a0a']),
   tide:     waves('Tide',   ['#4b7bb0', '#3d6797', '#30547d', '#244264', '#19314c', '#112337', '#0b1726']),
   velvet:   waves('Velvet', ['#e0488a', '#c23a76', '#9f2d61', '#7c214c', '#5a1738', '#3a0f25', '#200815']),
   aurora:   { name: 'Aurora',   base: '#05080d', c: ['#12a4b8', '#6a30d8', '#1db87f'] },
@@ -17,6 +18,7 @@ const PRESETS = {
   graphite: { name: 'Graphite', base: '#0a0a0c', c: ['#454955', '#25272d', '#666b78'] },
 };
 const LIGHT_PRESETS = {
+  paper:   waves('Paper', ['#4a4a4a', '#6e6e6e', '#909090', '#b0b0b0', '#cbcbcb', '#e2e2e2', '#f6f6f6']),
   lake:    waves('Lake',  ['#3f5f7f', '#557593', '#6b8ba8', '#86a3bd', '#a1bad1', '#bccfe2', '#d9e5f1']),
   petal:   waves('Petal', ['#e97fab', '#ef96ba', '#f3acc9', '#f7c2d7', '#fad5e4', '#fce5ef', '#fef3f8']),
   mist:    { name: 'Mist',    base: '#edf1f9', c: ['#86aaff', '#c39bff', '#73d9e4'] },
@@ -33,14 +35,12 @@ const RETIRED = { ember: 'sunset', dusk: 'rose', forest: 'lagoon', dawn: 'sorbet
 // Draws a wave wallpaper as an SVG data URL. Each band casts a soft shadow on the one
 // below it and has a faint light rim, like layered paper.
 const waveCache = {};
-function waveURL(tones) {
-  const key = tones.join();
-  if (waveCache[key]) return waveCache[key];
+function waveParts(tones) {
   const n = tones.length, span = 1900 / n;
   // On dark wallpapers shadows need to be deeper and rims fainter to read the same.
   const dark = parseInt(tones[n - 1].slice(1, 3), 16) < 100;
   const rim = dark ? '.09' : '.22', shade = dark ? '.6' : '.32';
-  let paths = `<rect x="-800" y="-900" width="3200" height="2800" fill="${tones[0]}"/>`;
+  const bands = [`<rect x="-800" y="-900" width="3200" height="2800" fill="${tones[0]}"/>`];
   for (let i = 1; i < n; i++) {
     const y0 = 1450 - i * span, ph = i * 1.7;
     const pts = [];
@@ -48,12 +48,30 @@ function waveURL(tones) {
       const y = y0 + 90 * Math.sin(x / 110 + ph) + 30 * Math.sin(x / 47 + ph * 2.3);
       pts.push(`${x} ${y.toFixed(1)}`);
     }
-    paths += `<path d="M-800 -900L${pts.join('L')}L2400 -900Z" fill="${tones[i]}" filter="url(#s)" stroke="rgba(255,255,255,${rim})" stroke-width="3"/>`;
+    bands.push(`<path d="M-800 -900L${pts.join('L')}L2400 -900Z" fill="${tones[i]}" filter="url(#s)" stroke="rgba(255,255,255,${rim})" stroke-width="3"/>`);
   }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">`
+  const svg = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">`
     + `<defs><filter id="s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="-8" dy="16" stdDeviation="16" flood-color="#000" flood-opacity="${shade}"/></filter></defs>`
-    + `<g transform="rotate(30 800 500)">${paths}</g></svg>`;
-  return (waveCache[key] = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`);
+    + `<g transform="rotate(30 800 500)">${inner}</g></svg>`;
+  return { bands, svg };
+}
+function waveURL(tones) {
+  const key = tones.join();
+  if (waveCache[key]) return waveCache[key];
+  const { bands, svg } = waveParts(tones);
+  return (waveCache[key] = `url("data:image/svg+xml,${encodeURIComponent(svg(bands.join('')))}")`);
+}
+// Moving waves: each band is its own layer that slides gently along its curve, at its
+// own pace. Layers are only moved (never redrawn), so this is cheap for the GPU.
+let waveKey = '';
+function drawWaves(tones) {
+  const key = tones ? tones.join() : '';
+  if (key === waveKey) return;
+  waveKey = key;
+  if (!tones) { $('#waves').replaceChildren(); return; }
+  const { bands, svg } = waveParts(tones);
+  $('#waves').innerHTML = bands.slice(1).map((b) => svg(b)).join('');
+  $('#waves').style.background = tones[0];
 }
 
 // System fonts only, so nothing is downloaded. Mac fonts first, Windows fallbacks after.
@@ -131,7 +149,7 @@ const QUOTES = [
 
 const DEFAULTS = {
   appearance: 'auto', // 'auto' follows the system / Chrome setting
-  wallpaper: 'aurora', wallpaperLight: 'mist', animated: true,
+  wallpaper: 'aurora', wallpaperLight: 'mist', animated: true, fps: 60,
   blur: 18, tint: 10, liquid: true, solidGlass: false,
   clockStyle: 'clear', clockFont: 'tall', clockSize: 140, clockColor: 'white', clockColorLight: 'ink', hour24: false,
   name: '',
@@ -216,6 +234,7 @@ function todaysQuote() {
 // ---------- look ----------
 // ---------- appearance ----------
 const lightQuery = matchMedia('(prefers-color-scheme: light)');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 function mode() {
   return S.appearance === 'auto' ? (lightQuery.matches ? 'light' : 'dark') : S.appearance;
 }
@@ -250,6 +269,9 @@ function applyLook() {
   for (const [k, v] of Object.entries(varsFor(m))) root.style.setProperty(k, v);
   root.className = `${base}${m === 'light' ? ' light' : ''}`;
   $('#clock').className = `${S.clockStyle}${(FONTS[S.clockFont] || FONTS.tall).variable ? ' rim' : ''}`;
+  const p = presetFor(m);
+  drawWaves(moving() && p.tones ? p.tones : null);
+  updateMotion();
   // boot.js applies this before the next page draws, for whichever mode is active then.
   try {
     localStorage.setItem('glassTabLook', JSON.stringify({ auto: S.appearance === 'auto', mode: m, cls: base, vars: { dark: varsFor('dark'), light: varsFor('light') } }));
@@ -261,6 +283,48 @@ function applyLook() {
   if (hasChrome && JSON.stringify(look) !== lastLook) { lastLook = JSON.stringify(look); chrome.storage.local.set({ look }); }
 }
 lightQuery.addEventListener('change', () => { if (S.appearance === 'auto') { applyLook(); syncPanel(); } });
+reduceMotion.addEventListener('change', applyLook);
+
+// ---------- motion ----------
+// Background motion runs here rather than in CSS so it can be held to the frame rate the
+// user picked: fewer frames means less work and longer battery. Only transforms change,
+// so each frame is cheap.
+const BLOB_SECONDS = { b1: 22, b2: 28, b3: 34, b4: 18, b5: 26 };
+const blobs = Object.keys(BLOB_SECONDS).map((k) => [document.querySelector(`.${k}`), BLOB_SECONDS[k]]);
+let motionTimer = 0;
+function moving() { return S.animated && !reduceMotion.matches; }
+// The page sleeps until just before the next frame is due, then draws it in step with
+// the screen, so lower rates really do less work.
+function scheduleMotion(last = performance.now()) {
+  const due = last + 1000 / S.fps;
+  const frame = (now) => {
+    if (!motionTimer) return;
+    if (now < due - 3) { requestAnimationFrame(frame); return; }
+    stepMotion(now);
+    scheduleMotion(now);
+  };
+  motionTimer = setTimeout(() => requestAnimationFrame(frame), Math.max(0, due - performance.now() - 6));
+}
+function stepMotion(now) {
+  const t = now / 1000;
+  // Blobs drift out and back; wave bands slide back and forth along their curves,
+  // each at its own pace (seconds per sweep, start offset).
+  for (const [el, sec] of blobs) {
+    const d = (1 - Math.cos(2 * Math.PI * t / sec)) / 2;
+    el.style.transform = `translate(${6 * d}vmax, ${-4 * d}vmax) scale(${1 + 0.12 * d})`;
+  }
+  document.querySelectorAll('#waves svg').forEach((el, i) => {
+    const [sec, start] = (i + 1) % 3 === 0 ? [20, 9] : (i + 1) % 2 === 0 ? [16, 5] : [12, 0];
+    const v = -Math.cos(Math.PI * (t + start) / sec);
+    el.style.transform = `translate(${4.3 * v}vmax, ${2.5 * v}vmax)`;
+  });
+}
+function updateMotion() {
+  clearTimeout(motionTimer);
+  motionTimer = 0;
+  if (moving()) scheduleMotion();
+  else for (const [el] of blobs) el.style.transform = '';
+}
 let lastLook = '';
 
 // ---------- glass Google search (helpers in gg.js) ----------
@@ -649,7 +713,12 @@ function buildPanel() {
   $('#quoteModes').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setQuoteMode(b.dataset.mode)));
 
   const bind = (id, key, prop, cast = (v) => v) => $(id).addEventListener('input', (e) => { S[key] = cast(e.target[prop]); update(); });
-  bind('#animated', 'animated', 'checked');
+  $('#motion').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+    const fps = Number(b.dataset.fps);
+    S.animated = fps > 0;
+    if (fps) S.fps = fps;
+    update();
+  }));
   bind('#liquid', 'liquid', 'checked');
   bind('#solid', 'solidGlass', 'checked');
   bind('#hour24', 'hour24', 'checked');
@@ -705,7 +774,7 @@ function syncPanel() {
   mark('#widgetChips', (b) => S.layout.some((w) => w.k === b.dataset.key));
   mark('#styles', (b) => b.dataset.style === S.clockStyle);
   mark('#quoteModes', (b) => b.dataset.mode === S.quote);
-  $('#animated').checked = S.animated;
+  mark('#motion', (b) => Number(b.dataset.fps) === (S.animated ? S.fps : 0));
   $('#liquid').checked = S.liquid;
   $('#solid').checked = S.solidGlass;
   $('#hour24').checked = S.hour24;

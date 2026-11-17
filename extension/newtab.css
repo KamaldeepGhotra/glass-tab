@@ -62,7 +62,7 @@ html, body {
 /* Background. Only html gets a color: a body background would paint over #bg. */
 html { background: var(--base); }
 #bg { position: fixed; inset: -10vmax; background: var(--wave, none) center / cover no-repeat, var(--base); z-index: -2; }
-.blob { display: var(--blob-display, block); position: absolute; border-radius: 50%; filter: blur(60px); opacity: .85; transition: background .8s; }
+.blob { display: var(--blob-display, block); will-change: transform; position: absolute; border-radius: 50%; filter: blur(60px); opacity: .85; transition: background .8s; }
 .light .blob { opacity: .9; }
 .b1 { left: -5%; top: -10%; width: 55vmax; height: 55vmax; background: var(--c1); }
 .b2 { left: 50%; top: 40%; width: 60vmax; height: 60vmax; background: var(--c2); }
@@ -71,13 +71,10 @@ html { background: var(--base); }
 .b4, .b5 { filter: blur(18px); }
 .b4 { left: 58%; top: 46%; width: 18vmax; height: 18vmax; background: var(--c1); }
 .b5 { left: 22%; top: 58%; width: 13vmax; height: 13vmax; background: var(--c3); }
-.animated .blob { animation: drift 22s ease-in-out infinite; }
-.animated .b4 { animation-duration: 18s; animation-direction: reverse; }
-.animated .b5 { animation-duration: 26s; }
-.animated .b2 { animation-duration: 28s; animation-direction: reverse; }
-.animated .b3 { animation-duration: 34s; }
-@keyframes drift { 50% { transform: translate(6vmax, -4vmax) scale(1.12); } }
-@media (prefers-reduced-motion: reduce) { .blob { animation: none !important; } }
+/* Moving waves cover the still picture underneath, starting from the first band's color. */
+#waves { position: absolute; inset: 0; }
+#waves:empty { display: none; }
+#waves svg { position: absolute; inset: 0; width: 100%; height: 100%; will-change: transform; }
 
 /* Blends the page into the toolbar */
 #fade { position: fixed; left: 0; right: 0; top: 0; height: 140px; background: linear-gradient(var(--bar), transparent); z-index: -1; pointer-events: none; }
