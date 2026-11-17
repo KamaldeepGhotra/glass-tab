@@ -18,12 +18,14 @@ const LIGHT_PRESETS = {
 
 // System fonts only, so nothing is downloaded. Mac fonts first, Windows fallbacks after.
 const SYSTEM = '"SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif';
+// "variable" fonts are built from overlapping shapes; an outline would trace the
+// overlaps inside each digit, so glass clocks in these fonts use a soft rim instead.
 const FONTS = {
-  classic:   { name: 'Classic',   stack: SYSTEM, weight: 200 },
+  classic:   { name: 'Classic',   stack: SYSTEM, weight: 200, variable: true },
   soft:      { name: 'Soft',      stack: '"Avenir Next", Avenir, "Segoe UI", sans-serif', weight: 300 },
-  heavy:     { name: 'Heavy',     stack: SYSTEM, weight: 700 },
+  heavy:     { name: 'Heavy',     stack: SYSTEM, weight: 700, variable: true },
   editorial: { name: 'Editorial', stack: 'Didot, "Bodoni 72", Georgia, serif', weight: 400 },
-  mono:      { name: 'Mono',      stack: '"SF Mono", Menlo, Consolas, monospace', weight: 200 },
+  mono:      { name: 'Mono',      stack: '"SF Mono", Menlo, Consolas, monospace', weight: 200, variable: true },
   tall:      { name: 'Tall',      stack: '"Avenir Next Condensed", Bahnschrift, "Arial Narrow", sans-serif', weight: 600 },
   geometric: { name: 'Geometric', stack: 'Futura, "Century Gothic", sans-serif', weight: 500 },
 };
@@ -205,7 +207,7 @@ function applyLook() {
   const root = document.documentElement;
   for (const [k, v] of Object.entries(varsFor(m))) root.style.setProperty(k, v);
   root.className = `${base}${m === 'light' ? ' light' : ''}`;
-  $('#clock').className = S.clockStyle;
+  $('#clock').className = `${S.clockStyle}${(FONTS[S.clockFont] || FONTS.tall).variable ? ' rim' : ''}`;
   // boot.js applies this before the next page draws, for whichever mode is active then.
   try {
     localStorage.setItem('glassTabLook', JSON.stringify({ auto: S.appearance === 'auto', mode: m, cls: base, vars: { dark: varsFor('dark'), light: varsFor('light') } }));
@@ -218,35 +220,21 @@ function applyLook() {
 lightQuery.addEventListener('change', () => { if (S.appearance === 'auto') { applyLook(); syncPanel(); } });
 let lastLook = '';
 
-// ---------- glass Google search (opt-in, per device) ----------
-const GOOGLE = { id: 'glass-google', origins: ['https://www.google.com/*'] };
-
-async function glassGoogleOn() {
-  if (!hasChrome) return false;
-  const [registered] = await chrome.scripting.getRegisteredContentScripts({ ids: [GOOGLE.id] });
-  return !!registered && (await chrome.permissions.contains({ origins: GOOGLE.origins }));
-}
-
+// ---------- glass Google search (helpers in gg.js) ----------
 async function setGlassGoogle(on) {
   const box = $('#glassGoogle');
   if (!hasChrome) { box.checked = false; return; }
   try {
     if (on) {
-      // Must be requested straight from the click, before any other await.
-      if (!(await chrome.permissions.request({ origins: GOOGLE.origins }))) { box.checked = false; return; }
-      await chrome.scripting.unregisterContentScripts({ ids: [GOOGLE.id] }).catch(() => {});
-      await chrome.scripting.registerContentScripts([{
-        id: GOOGLE.id, matches: ['https://www.google.com/search*'], css: ['google.css'], js: ['google.js'], runAt: 'document_start',
-      }]);
-      $('#googleNote').textContent = 'On. Reload any open Google search tabs to see it.';
+      // ggTurnOn shows Chrome's prompt, so it must run straight from the click.
+      if (await ggTurnOn()) $('#googleNote').textContent = 'On. Reload any open Google search tabs to see it.';
     } else {
-      await chrome.scripting.unregisterContentScripts({ ids: [GOOGLE.id] }).catch(() => {});
-      await chrome.permissions.remove({ origins: GOOGLE.origins }).catch(() => {});
+      await ggTurnOff();
     }
   } catch (err) {
     $('#googleNote').textContent = `Couldn't turn this on: ${err.message}`;
   }
-  box.checked = await glassGoogleOn();
+  box.checked = await ggIsOn();
 }
 
 // ---------- clock ----------
@@ -308,7 +296,11 @@ async function getWeather() {
 }
 
 function weatherWidget(size) {
-  const body = h('div', { class: 'wx' }, S.city || S.useLocation ? 'Loading…' : 'Add a city or use your location in settings.');
+  const body = h('div', { class: 'wx' }, S.city || S.useLocation ? 'Loading…' : null);
+  if (!S.city && !S.useLocation) {
+    // Empty state: one click takes you straight to the weather settings.
+    body.append(h('button', { class: 'chip', onclick: (e) => { e.stopPropagation(); openWeatherSettings(); } }, 'Set your city'));
+  }
   if (S.city || S.useLocation) {
     getWeather()
       .then((d) => {
@@ -562,6 +554,13 @@ $('#search').addEventListener('submit', (e) => {
 if (hasChrome) chrome.runtime.onMessage.addListener((msg) => { if (msg.type === 'focus-search') $('#q').focus(); });
 
 // ---------- settings panel ----------
+function openWeatherSettings() {
+  $('#panel').hidden = false;
+  $('#gear').setAttribute('aria-expanded', true);
+  $('#city').scrollIntoView({ block: 'center' });
+  $('#city').focus();
+}
+
 async function useMyLocation() {
   const btn = $('#useLocation');
   try {
@@ -619,7 +618,7 @@ function buildPanel() {
   $('#units').addEventListener('change', (e) => { S.units = e.target.value; update(); renderWidgets(); });
   $('#useLocation').addEventListener('click', useMyLocation);
   $('#glassGoogle').addEventListener('change', (e) => setGlassGoogle(e.target.checked));
-  glassGoogleOn().then((on) => { $('#glassGoogle').checked = on; });
+  if (hasChrome) ggIsOn().then((on) => { $('#glassGoogle').checked = on; });
   $('#editLayout').addEventListener('click', () => setEditing(true));
 
   const panel = $('#panel'), gear = $('#gear');

@@ -10,8 +10,9 @@
   function setMode(light) {
     root.classList.add('glass-google');
     root.classList.toggle('gt-light', light);
-    const p = look?.[light ? 'light' : 'dark'];
-    if (p) {
+    // Older versions saved a single palette as { base, c }; accept both formats.
+    const p = look?.[light ? 'light' : 'dark'] ?? (look?.base ? look : null);
+    if (p?.base && Array.isArray(p.c)) {
       root.style.setProperty('--gt-base', p.base);
       root.style.setProperty('--gt-c1', p.c[0]);
       root.style.setProperty('--gt-c2', p.c[1]);
@@ -33,15 +34,18 @@
   const opaque = (el) => lum(getComputedStyle(el).backgroundColor) !== null;
 
   function mark() {
-    // Search box: the rounded, filled ancestor of the query field.
+    // Search box: the outermost rounded, filled layer around the query field becomes
+    // glass; rounded layers inside it go clear so they don't stack up.
     const q = document.querySelector('textarea[name="q"], input[name="q"]');
+    const rounded = [];
     for (let el = q?.parentElement, i = 0; el && i < 6; el = el.parentElement, i++) {
-      if (parseFloat(getComputedStyle(el).borderRadius) >= 16 && opaque(el)) { el.classList.add('gt-box'); break; }
+      if (parseFloat(getComputedStyle(el).borderRadius) >= 16 && (opaque(el) || el.classList.contains('gt-box'))) rounded.push(el);
     }
-    // The sticky header around it gets a frosted strip so it stays readable while scrolling.
-    for (let el = q?.parentElement; el && el !== document.body; el = el.parentElement) {
-      if (['sticky', 'fixed'].includes(getComputedStyle(el).position)) { el.classList.add('gt-header'); break; }
-    }
+    rounded.forEach((el, i) => {
+      el.classList.toggle('gt-box', i === rounded.length - 1);
+      el.classList.toggle('gt-clear', i < rounded.length - 1);
+    });
+    markHeader();
     // Anything painted in Google's page color (wrappers, bars, "Show more" fades)
     // becomes see-through so the wallpaper shows.
     for (const el of document.querySelectorAll('body *')) {
@@ -57,12 +61,21 @@
     }
   }
 
+  // Google's header only becomes fixed once you scroll, so this runs on scroll too.
+  function markHeader() {
+    const q = document.querySelector('textarea[name="q"], input[name="q"]');
+    for (let el = q?.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (['sticky', 'fixed'].includes(getComputedStyle(el).position)) { el.classList.add('gt-header'); break; }
+    }
+  }
+
   let pageBg = '';
   function start() {
     // Read Google's own background (with our style off) to see which mode it is in.
     root.classList.remove('glass-google');
-    pageBg = getComputedStyle(document.body).backgroundColor;
-    const l = lum(pageBg) ?? lum(getComputedStyle(root).backgroundColor) ?? 0;
+    // Google paints its page color on <body> or on <html>, depending on the account.
+    pageBg = [document.body, root].map((el) => getComputedStyle(el).backgroundColor).find((c) => lum(c) !== null) || '';
+    const l = lum(pageBg) ?? 0;
     mark();
     setMode(l >= 128);
     // Results load in pieces, so re-tag when the page changes (at most a few times a second).
@@ -71,6 +84,11 @@
       if (timer) return;
       timer = setTimeout(() => { timer = null; mark(); }, 250);
     }).observe(document.body, { childList: true, subtree: true });
+    let scrollTimer = null;
+    addEventListener('scroll', () => {
+      if (scrollTimer) return;
+      scrollTimer = setTimeout(() => { scrollTimer = null; markHeader(); }, 150);
+    }, { passive: true });
   }
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', start, { once: true });
   else start();

@@ -33,3 +33,18 @@ if (hasChrome) {
 } else {
   text.textContent = 'Press ⌘⇧K on any website to open the glass search bar.';
 }
+
+// Step 1: glass Google search. Chrome only shows its permission prompt from a click,
+// so this button is the earliest point the extension can turn it on.
+const ggBtn = document.getElementById('ggOn');
+const ggNote = document.getElementById('ggNote');
+const ggShowOn = () => { ggBtn.textContent = 'On'; ggBtn.disabled = true; ggNote.textContent = 'Your Google search results are glass now.'; };
+if (hasChrome) ggIsOn().then((on) => { if (on) ggShowOn(); });
+ggBtn.addEventListener('click', async () => {
+  if (!hasChrome) return;
+  if (await ggTurnOn({ fromWelcome: true })) ggShowOn();
+  else {
+    ggBtn.textContent = 'Turn on';
+    ggNote.textContent = 'No problem. We\'ll offer it once more the first time you search Google, then never again.';
+  }
+});

@@ -121,6 +121,15 @@ main { height: 100%; display: flex; flex-direction: column; align-items: center;
   -webkit-text-stroke: 1px rgba(var(--clock-rgb), .7);
   filter: drop-shadow(0 0 18px rgba(var(--clock-rgb), .25)) drop-shadow(0 4px 12px var(--drop));
 }
+/* Glass rim for fonts made of overlapping shapes (no outline, which would show the overlaps) */
+#clock.rim { -webkit-text-stroke: 0; }
+#clock.clear.rim {
+  background: linear-gradient(170deg, rgba(var(--clock-rgb), .7) 0%, rgba(var(--clock-rgb), .2) 45%, rgba(var(--clock-rgb), .12) 60%, rgba(var(--clock-rgb), .4) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 1px 0 rgba(var(--clock-rgb), .55)) drop-shadow(0 4px 14px var(--drop));
+}
+#clock.frost.rim { filter: drop-shadow(0 1px 0 rgba(var(--clock-rgb), .6)) drop-shadow(0 0 18px rgba(var(--clock-rgb), .25)) drop-shadow(0 4px 12px var(--drop)); }
 #quoteCaption { font-size: 15px; font-style: italic; opacity: .78; max-width: 640px; text-align: center; margin-top: 2px; }
 #quoteCaption:empty { display: none; }
 
