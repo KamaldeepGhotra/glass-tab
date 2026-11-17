@@ -111,14 +111,26 @@ const LIGHT_CLOCK_COLORS = {
 };
 
 // Sizes: S = 1 cell, M = 2 cells wide, L = 2 x 2 cells, XL = 2 x 3 cells.
-// First size is the default.
+// A widget only offers sizes where it shows something different:
+//   Weather  S now · M + 3 days · L + details, hourly and 5 days
+//   To-do    S a short list · M a few tasks · L most lists · XL long lists
+//   Focus    S timer only · M + length controls and today's count
+//   Top sites S 4 icons · M 4 with names · L 8 with names
+//   Recent tabs and Quote: M and L (they need the width for text)
+//   Notes    S to XL, like the to-do list
+//   Countdown S days left · M + the date and hours
+//   Calendar S next event · M next few · L the coming week
+const SIZE_NAMES = { S: 'Small', M: 'Medium', L: 'Large', XL: 'Extra large' };
 const WIDGETS = {
-  weather: { name: 'Weather',     sizes: ['S', 'M', 'L'] },
-  todo:    { name: 'To-do',       sizes: ['L', 'XL', 'M'] },
-  focus:   { name: 'Focus timer', sizes: ['S', 'M'] },
-  sites:   { name: 'Top sites',   sizes: ['M', 'L'] },
-  recent:  { name: 'Recent tabs', sizes: ['M', 'L'] },
-  quote:   { name: 'Quote',       sizes: ['M', 'L'] },
+  weather: { name: 'Weather',     sizes: ['S', 'M', 'L'],       def: 'S' },
+  todo:    { name: 'To-do',       sizes: ['S', 'M', 'L', 'XL'], def: 'L' },
+  focus:   { name: 'Focus timer', sizes: ['S', 'M'],            def: 'M' },
+  sites:   { name: 'Top sites',   sizes: ['S', 'M', 'L'],       def: 'M' },
+  recent:  { name: 'Recent tabs', sizes: ['M', 'L'],            def: 'M' },
+  quote:   { name: 'Quote',       sizes: ['M', 'L'],            def: 'M' },
+  notes:   { name: 'Notes',       sizes: ['S', 'M', 'L', 'XL'], def: 'M' },
+  countdown: { name: 'Countdown', sizes: ['S', 'M'],            def: 'S' },
+  calendar: { name: 'Calendar',   sizes: ['S', 'M', 'L'],       def: 'M' },
 };
 
 const QUOTES = [
@@ -160,7 +172,7 @@ const DEFAULTS = {
   quote: 'caption', // 'off' | 'caption' | 'widget'
   layout: [{ k: 'weather', size: 'S' }, { k: 'todo', size: 'L' }, { k: 'sites', size: 'M' }],
   city: '', units: 'c', useLocation: false, coords: null,
-  todos: [], focusMinutes: 30,
+  todos: [], focusMinutes: 30, notes: '', countdown: { title: '', date: '' },
 };
 
 const $ = (s) => document.querySelector(s);
@@ -174,7 +186,7 @@ let editing = false;
 function migrate(raw) {
   const s = { ...raw };
   if (!s.layout && Array.isArray(s.widgets)) {
-    s.layout = s.widgets.filter((k) => k !== 'quote' && WIDGETS[k]).map((k) => ({ k, size: WIDGETS[k].sizes[0] }));
+    s.layout = s.widgets.filter((k) => k !== 'quote' && WIDGETS[k]).map((k) => ({ k, size: WIDGETS[k].def }));
     if (s.widgets.includes('quote')) { s.quote = 'widget'; s.layout.push({ k: 'quote', size: 'M' }); }
   }
   delete s.widgets;
@@ -464,9 +476,12 @@ function weatherWidget(size) {
   return h('div', {}, h('h3', {}, 'Weather'), body);
 }
 
+// Chrome's synced storage allows 8 KB per setting, so lists and notes are capped to fit.
+const TODO_MAX = 50, NOTES_MAX = 6000;
+
 // To-do: unfinished tasks stay on top, finished ones sink to the bottom and can be
 // cleared in one go. Click a task to edit it; empty it to delete. Enter keeps adding.
-function todoWidget() {
+function todoWidget(size) {
   const list = h('ul', { class: 'todo' });
   const left = h('span', { class: 'muted' });
   const clear = h('button', { class: 'linkish', onclick: () => { S.todos = S.todos.filter((t) => !t.done); save(); draw(); } });
@@ -502,11 +517,11 @@ function todoWidget() {
     }));
   };
   draw();
-  const input = h('input', { placeholder: 'Add a task and press Enter', maxlength: '120', 'aria-label': 'Add a task' });
+  const input = h('input', { placeholder: size === 'S' ? 'Add a task' : 'Add a task and press Enter', maxlength: '120', 'aria-label': 'Add a task' });
   const form = h('form', { onsubmit: (e) => {
     e.preventDefault();
     const text = input.value.trim();
-    if (!text || S.todos.length >= 100) return;
+    if (!text || S.todos.length >= TODO_MAX) return;
     S.todos.push({ text, done: false });
     input.value = '';
     save();
@@ -565,7 +580,7 @@ function focusWidget(size) {
     if (f.endAt) setFocus({ ...f, endAt: null, left: focusLeft(f) });
     else setFocus({ ...f, endAt: Date.now() + f.left * 1000 });
   };
-  const el = h('div', { class: 'center' }, h('h3', {}, 'Focus'), h('div', { class: 'focus-set' }, less, time, more), h('div', { class: 'row' }, start, reset), size === 'M' ? count : null);
+  const el = h('div', { class: 'center' }, h('h3', {}, 'Focus'), h('div', { class: 'focus-set' }, size === 'S' ? null : less, time, size === 'S' ? null : more), h('div', { class: 'row' }, start, reset), size === 'M' ? count : null);
   const draw = () => {
     if (!el.isConnected && focusViews.has(draw) && el.dataset.drawn) { focusViews.delete(draw); return; }
     el.dataset.drawn = '1';
@@ -620,7 +635,198 @@ function quoteWidget() {
   return h('div', { class: 'quote-w' }, h('div', { class: 'quote' }, `"${text}"`), h('div', { class: 'muted' }, who));
 }
 
-const RENDER = { weather: weatherWidget, todo: todoWidget, focus: focusWidget, sites: sitesWidget, recent: recentWidget, quote: quoteWidget };
+// Notes: one free-form page, saved as you type.
+function notesWidget(size) {
+  const area = h('textarea', { placeholder: 'Jot something down…', maxlength: String(NOTES_MAX), 'aria-label': 'Notes', spellcheck: 'true' });
+  area.value = S.notes;
+  const count = h('span', { class: 'muted' });
+  const showCount = () => { count.textContent = S.notes.length > NOTES_MAX - 500 ? `${NOTES_MAX - S.notes.length} left` : ''; };
+  area.addEventListener('input', () => { S.notes = area.value; showCount(); save(); });
+  showCount();
+  return h('div', { class: 'notes-w' }, h('div', { class: 'whead' }, h('h3', {}, 'Notes'), count), area);
+}
+
+// Countdown to a date the user picks, like an exam, a trip or a birthday.
+function countdownWidget(size) {
+  const el = h('div', { class: 'cd-w' });
+  const draw = () => {
+    const c = S.countdown;
+    if (!c.date) {
+      el.replaceChildren(h('h3', {}, 'Countdown'), h('button', { class: 'chip', onclick: (e) => { e.stopPropagation(); edit(); } }, 'Set a date'));
+      return;
+    }
+    const target = new Date(`${c.date}T00:00`);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const days = Math.round((target - today) / 864e5);
+    const big = days === 0 ? 'Today' : String(Math.abs(days));
+    const unit = days === 0 ? '' : `${Math.abs(days) === 1 ? 'day' : 'days'}${days < 0 ? ' ago' : ''}`;
+    const when = target.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: target.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
+    const weeks = days > 13 ? `${Math.floor(days / 7)} weeks, ${days % 7} ${days % 7 === 1 ? 'day' : 'days'}` : null;
+    el.replaceChildren(
+      h('div', { class: 'whead' }, h('h3', {}, c.title || 'Countdown'), h('button', { class: 'linkish', onclick: (e) => { e.stopPropagation(); edit(); } }, 'Edit')),
+      h('div', { class: 'cd-num' }, big, h('span', {}, ` ${unit}`)),
+      ...(size === 'M' ? [h('div', { class: 'muted' }, [when, weeks].filter(Boolean).join(' · '))] : []));
+  };
+  const edit = () => {
+    const title = h('input', { placeholder: 'What for?', maxlength: '40', value: S.countdown.title });
+    const date = h('input', { type: 'date', value: S.countdown.date, 'aria-label': 'Date' });
+    el.replaceChildren(h('form', { class: 'cd-form', onsubmit: (e) => {
+      e.preventDefault();
+      S.countdown = { title: title.value.trim(), date: date.value };
+      save();
+      draw();
+    } }, title, date, h('div', { class: 'row' }, h('button', { class: 'chip' }, 'Save'), h('button', { class: 'chip', type: 'button', onclick: draw }, 'Cancel'))));
+    title.focus();
+  };
+  draw();
+  return el;
+}
+
+// ---------- calendar ----------
+// Reads Google Calendar or iCloud through the calendar's private iCal link, so no
+// sign-in is needed and nothing leaves this computer. The link is kept in local
+// storage only (not synced), because anyone with it can read the calendar.
+const CAL_ORIGINS = ['https://calendar.google.com/*', 'https://*.icloud.com/*'];
+
+// Minimal iCal reader: events, all-day events, time zones as local time, and the
+// common repeat rules (daily, weekly by weekday, monthly, yearly; count/until/except).
+function parseICS(text, from, to) {
+  const lines = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);
+  const out = [];
+  let ev = null;
+  const toDate = (v, params) => {
+    const m = v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?/);
+    if (!m) return null;
+    const [, y, mo, d, hh, mm, ss, z] = m;
+    if (!hh) return { date: new Date(+y, mo - 1, +d), allDay: true };
+    const date = z ? new Date(Date.UTC(+y, mo - 1, +d, +hh, +mm, +ss)) : new Date(+y, mo - 1, +d, +hh, +mm, +ss);
+    return { date, allDay: /VALUE=DATE(;|$)/.test(params) };
+  };
+  for (const line of lines) {
+    if (line === 'BEGIN:VEVENT') { ev = { ex: [] }; continue; }
+    if (line === 'END:VEVENT') { if (ev?.start) expand(ev); ev = null; continue; }
+    if (!ev) continue;
+    const i = line.indexOf(':');
+    const [name, ...rest] = line.slice(0, i).split(';');
+    const params = rest.join(';'), value = line.slice(i + 1);
+    if (name === 'SUMMARY') ev.title = value.replace(/\\([,;\\])/g, '$1').replace(/\\n/gi, ' ');
+    else if (name === 'DTSTART') ev.start = toDate(value, params);
+    else if (name === 'DTEND') ev.end = toDate(value, params)?.date;
+    else if (name === 'RRULE') ev.rule = Object.fromEntries(value.split(';').map((kv) => kv.split('=')));
+    else if (name === 'EXDATE') value.split(',').forEach((v) => { const d = toDate(v, params); if (d) ev.ex.push(d.date.getTime()); });
+    else if (name === 'STATUS' && value === 'CANCELLED') ev.cancelled = true;
+  }
+  function expand(e) {
+    if (e.cancelled) return;
+    const len = (e.end || e.start.date) - e.start.date;
+    const add = (d) => { if (d >= from - len && d < to && !e.ex.includes(d.getTime())) out.push({ title: e.title || '(No title)', start: d, end: new Date(+d + len), allDay: e.start.allDay }); };
+    const r = e.rule;
+    if (!r) { add(e.start.date); return; }
+    const step = +(r.INTERVAL || 1), until = r.UNTIL ? toDate(r.UNTIL, '').date : null;
+    let left = r.COUNT ? +r.COUNT : Infinity;
+    const days = r.BYDAY ? r.BYDAY.split(',').map((x) => ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'].indexOf(x.slice(-2))) : null;
+    let d = new Date(e.start.date);
+    // Old daily or weekly repeats with no count: jump straight to the coming week.
+    const period = { DAILY: 1, WEEKLY: 7 }[r.FREQ] * step;
+    if (period && left === Infinity && d < from) d.setDate(d.getDate() + Math.floor((from - d) / (period * 864e5)) * period);
+    for (let n = 0; n < 5000 && left > 0; n++) {
+      if (until && d > until) break;
+      if (d >= to) break;
+      if (r.FREQ === 'WEEKLY' && days) {
+        // Walk each day of this week, then jump ahead by the interval.
+        const weekStart = new Date(d); weekStart.setDate(d.getDate() - d.getDay());
+        for (let k = 0; k < 7 && left > 0; k++) {
+          const day = new Date(weekStart); day.setDate(weekStart.getDate() + k);
+          if (day < e.start.date || !days.includes(k)) continue;
+          if ((until && day > until) || day >= to) break;
+          add(day); left--;
+        }
+        d = new Date(weekStart);
+        d.setDate(weekStart.getDate() + 7 * step);
+        continue;
+      }
+      add(new Date(d)); left--;
+      if (r.FREQ === 'DAILY') d.setDate(d.getDate() + step);
+      else if (r.FREQ === 'WEEKLY') d.setDate(d.getDate() + 7 * step);
+      else if (r.FREQ === 'MONTHLY') d.setMonth(d.getMonth() + step);
+      else if (r.FREQ === 'YEARLY') d.setFullYear(d.getFullYear() + step);
+      else break;
+    }
+  }
+  return out;
+}
+
+const calLink = (u) => u.trim().replace(/^webcal:/i, 'https:');
+async function getCalendar() {
+  const links = ((await cacheGet('calLinks')) || []).map(calLink).filter(Boolean);
+  if (!links.length) return null;
+  const cached = await cacheGet('calCache');
+  if (cached && cached.key === links.join() && Date.now() - cached.at < 15 * 60e3) return cached.events.map((x) => ({ ...x, start: new Date(x.start), end: new Date(x.end) }));
+  const from = new Date(); from.setHours(0, 0, 0, 0);
+  const to = new Date(+from + 8 * 864e5);
+  const lists = await Promise.all(links.map(async (u) => parseICS(await (await fetch(u, { cache: 'no-store' })).text(), from, to)));
+  const now = Date.now();
+  const events = lists.flat().filter((x) => +x.end > now || x.allDay).sort((a, b) => a.start - b.start || a.allDay - b.allDay);
+  cacheSet('calCache', { key: links.join(), at: Date.now(), events });
+  return events;
+}
+
+function calendarWidget(size) {
+  const body = h('div', { class: 'cal' }, 'Loading…');
+  const today = new Date();
+  const head = h('div', { class: 'whead' }, h('h3', {}, 'Calendar'), h('span', { class: 'muted' }, today.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })));
+  const time = (e) => (e.allDay ? 'All day' : e.start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
+  const dayName = (d) => {
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    const diff = Math.round((new Date(d).setHours(0, 0, 0, 0) - t) / 864e5);
+    return diff <= 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  };
+  const row = (e, withDay) => h('div', { class: 'cal-ev' }, h('span', { class: 'cal-t' }, withDay && dayName(e.start) !== 'Today' ? `${dayName(e.start).split(',')[0]} ${time(e)}` : time(e)), h('span', { class: 'cal-n' }, e.title));
+  getCalendar().then((events) => {
+    if (!events) {
+      body.replaceChildren(h('button', { class: 'chip', onclick: (e) => { e.stopPropagation(); openCalendarSettings(); } }, 'Link a calendar'));
+      return;
+    }
+    if (!events.length) { body.textContent = 'Nothing coming up this week.'; return; }
+    if (size === 'S') { body.replaceChildren(h('div', { class: 'muted' }, `Next · ${dayName(events[0].start)}`), h('div', { class: 'cal-next' }, events[0].title), h('div', { class: 'muted' }, time(events[0]))); return; }
+    if (size === 'M') { body.replaceChildren(...events.slice(0, 3).map((e) => row(e, true))); return; }
+    // Large: the coming week, grouped by day.
+    const groups = new Map();
+    for (const e of events) { const k = dayName(e.start); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
+    body.className = 'cal cal-l';
+    body.replaceChildren(...[...groups].flatMap(([k, list]) => [h('div', { class: 'cal-day' }, k), ...list.map((e) => row(e, false))]));
+  }).catch(() => { body.textContent = "Couldn't load your calendar. Check the link in Customize."; });
+  return h('div', { class: 'cal-w' }, head, body);
+}
+
+function openCalendarSettings() {
+  $('#panel').hidden = false;
+  $('#gear').setAttribute('aria-expanded', 'true');
+  $('#calLinks').scrollIntoView({ block: 'center' });
+  $('#calLinks').focus();
+}
+
+// Saving the link asks Chrome for access to that calendar service (it has to come
+// straight from the click), then shows the widget.
+async function saveCalendarLinks() {
+  const links = $('#calLinks').value.split(/\s+/).map(calLink).filter((u) => /^https:\/\//.test(u));
+  const note = $('#calNote');
+  if (!links.length) {
+    await cacheSet('calLinks', []);
+    note.textContent = 'Calendar unlinked.';
+    renderWidgets();
+    return;
+  }
+  const ok = await chrome.permissions.request({ origins: CAL_ORIGINS }).catch(() => false);
+  if (!ok) { note.textContent = 'Glass Tab needs permission to read your calendar link.'; return; }
+  await cacheSet('calLinks', links);
+  await cacheSet('calCache', null);
+  if (!S.layout.some((w) => w.k === 'calendar')) { S.layout.push({ k: 'calendar', size: WIDGETS.calendar.def }); update(); }
+  note.textContent = `Linked ${links.length} ${links.length === 1 ? 'calendar' : 'calendars'}.`;
+  renderWidgets();
+}
+
+const RENDER = { weather: weatherWidget, todo: todoWidget, focus: focusWidget, sites: sitesWidget, recent: recentWidget, quote: quoteWidget, notes: notesWidget, countdown: countdownWidget, calendar: calendarWidget };
 
 // ---------- layout and edit mode ----------
 // Widgets are identified by key (each widget appears at most once).
@@ -630,12 +836,21 @@ function removeWidget(k) {
   update();
   renderWidgets();
 }
-function cycleSize(k) {
+function setSize(k, size) {
   const w = S.layout.find((x) => x.k === k);
-  const sizes = WIDGETS[k].sizes;
-  w.size = sizes[(sizes.indexOf(w.size) + 1) % sizes.length];
-  save();
+  if (!w || w.size === size) return;
+  w.size = size;
+  update();
   renderWidgets();
+}
+
+// One row of size buttons, used on the widget in edit mode and in Customize.
+function sizePicker(k, current, long) {
+  return h('div', { class: 'sizes', role: 'group', 'aria-label': `${WIDGETS[k].name} size` },
+    ...WIDGETS[k].sizes.map((z) => h('button', {
+      class: z === current ? 'on' : '', title: SIZE_NAMES[z], 'aria-pressed': String(z === current),
+      onclick: (e) => { e.stopPropagation(); setSize(k, z); },
+    }, long ? SIZE_NAMES[z] : z)));
 }
 
 function buildWidget({ k, size }) {
@@ -643,8 +858,8 @@ function buildWidget({ k, size }) {
   el.classList.add('widget', 'glass', `size-${size}`);
   el.dataset.k = k;
   const ctl = h('div', { class: 'wctl' });
-  if (WIDGETS[k].sizes.length > 1) ctl.append(h('button', { 'aria-label': `Change ${WIDGETS[k].name} size`, onclick: () => cycleSize(k) }, size));
-  ctl.append(h('button', { 'aria-label': `Remove ${WIDGETS[k].name}`, onclick: () => removeWidget(k) }, '×'));
+  if (WIDGETS[k].sizes.length > 1) ctl.append(sizePicker(k, size));
+  ctl.append(h('button', { class: 'wdel', 'aria-label': `Remove ${WIDGETS[k].name}`, onclick: () => removeWidget(k) }, '×'));
   el.append(ctl);
   return el;
 }
@@ -775,26 +990,35 @@ async function useMyLocation() {
 function setQuoteMode(mode) {
   S.quote = mode;
   const i = S.layout.findIndex((w) => w.k === 'quote');
-  if (mode === 'widget' && i < 0) S.layout.push({ k: 'quote', size: 'M' });
+  if (mode === 'widget' && i < 0) S.layout.push({ k: 'quote', size: WIDGETS.quote.def });
   if (mode !== 'widget' && i >= 0) S.layout.splice(i, 1);
   update();
   renderWidgets();
 }
 
+// Customize > Widgets: each widget on its own row, with an on/off switch and its sizes.
+function drawWidgetRows() {
+  $('#widgetRows').replaceChildren(...Object.entries(WIDGETS).map(([key, w]) => {
+    const placed = S.layout.find((x) => x.k === key);
+    const toggle = () => {
+      if (key === 'quote') { setQuoteMode(placed ? 'caption' : 'widget'); return; }
+      if (placed) S.layout.splice(S.layout.indexOf(placed), 1);
+      else S.layout.push({ k: key, size: w.def });
+      update();
+      renderWidgets();
+    };
+    return h('div', { class: `wrow${placed ? ' on' : ''}` },
+      h('label', { class: 'toggle' }, h('input', { type: 'checkbox', ...(placed ? { checked: '' } : {}), onchange: toggle }), ` ${w.name}`),
+      placed && w.sizes.length > 1 ? sizePicker(key, placed.size) : null);
+  }));
+}
+
 function buildPanel() {
+  $('#calSave').addEventListener('click', saveCalendarLinks);
+  cacheGet('calLinks').then((l) => { if (l?.length) $('#calLinks').value = l.join('\n'); });
   $('#appearance').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { S.appearance = b.dataset.mode; update(); }));
   for (const [key, f] of Object.entries(FONTS)) {
     $('#fonts').append(h('button', { 'data-key': key, style: `font-family: ${f.stack.replaceAll('"', "'")}`, onclick: () => { S.clockFont = key; update(); } }, f.name));
-  }
-  for (const [key, w] of Object.entries(WIDGETS)) {
-    if (key === 'quote') continue; // placed with its own control
-    $('#widgetChips').append(h('button', { 'data-key': key, onclick: () => {
-      const i = S.layout.findIndex((x) => x.k === key);
-      if (i >= 0) S.layout.splice(i, 1);
-      else S.layout.push({ k: key, size: w.sizes[0] });
-      update();
-      renderWidgets();
-    } }, w.name));
   }
   $('#styles').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { S.clockStyle = b.dataset.style; update(); }));
   $('#quoteModes').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setQuoteMode(b.dataset.mode)));
@@ -860,7 +1084,7 @@ function syncPanel() {
   mark('#clockColors', (b) => b.dataset.key === S[set.colorKey]);
   mark('#appearance', (b) => b.dataset.mode === S.appearance);
   mark('#fonts', (b) => b.dataset.key === S.clockFont);
-  mark('#widgetChips', (b) => S.layout.some((w) => w.k === b.dataset.key));
+  drawWidgetRows();
   mark('#styles', (b) => b.dataset.style === S.clockStyle);
   mark('#quoteModes', (b) => b.dataset.mode === S.quote);
   mark('#motion', (b) => Number(b.dataset.fps) === (S.animated ? S.fps : 0));

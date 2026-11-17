@@ -174,7 +174,26 @@ main { height: 100%; display: flex; flex-direction: column; align-items: center;
 @media (prefers-reduced-motion: reduce) { .editing .widget { animation: none; outline: 1px dashed rgba(var(--ink), .5); } }
 .wctl { display: none; position: absolute; top: 8px; right: 8px; gap: 4px; z-index: 1; }
 .editing .wctl { display: flex; }
-.wctl button { border: 0; border-radius: 999px; background: var(--on-bg); color: var(--on-fg); font: inherit; font-size: 11px; font-weight: 600; padding: 2px 8px; cursor: pointer; }
+.wctl > button, .wctl .sizes button { border: 0; border-radius: 999px; background: var(--on-bg); color: var(--on-fg); font: inherit; font-size: 11px; font-weight: 600; padding: 2px 8px; cursor: pointer; }
+/* Size buttons: on widgets in edit mode and in Customize */
+.sizes { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: rgba(var(--ink), .1); }
+.sizes button { border: 0; border-radius: 999px; background: none; color: var(--fg); font: inherit; font-size: 11px; font-weight: 600; padding: 2px 8px; cursor: pointer; }
+.sizes button.on { background: var(--on-bg); color: var(--on-fg); }
+.wctl .sizes { background: var(--on-bg); }
+.wctl .sizes button { background: none; color: var(--on-fg); opacity: .55; }
+.wctl .sizes button.on { opacity: 1; box-shadow: inset 0 0 0 1.5px var(--on-fg); }
+.wrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; }
+.wrow .toggle { margin: 0; }
+#widgetRows { margin-bottom: 10px; }
+
+/* Small widgets keep only what fits */
+.size-S .todo-w .linkish, .size-S .whead .muted { display: none; }
+.size-S .todo li { font-size: 13px; padding: 3px 0; }
+.size-S .todo li span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.size-S .todo li span[contenteditable="plaintext-only"] { white-space: normal; }
+.size-S .sites { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.size-S .site span { display: none; }
+
 #doneEdit { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); border-radius: 999px; padding: 8px 22px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; z-index: 5; }
 
 /* Weather */
@@ -206,6 +225,33 @@ main { height: 100%; display: flex; flex-direction: column; align-items: center;
 .todo .del { background: none; border: 0; color: var(--fg); opacity: 0; cursor: pointer; font-size: 16px; padding: 0 2px; }
 .todo li:hover .del, .todo .del:focus-visible { opacity: .6; }
 .widget input { width: 100%; background: rgba(var(--ink), .07); border: 1px solid rgba(var(--ink), .12); border-radius: 10px; color: var(--fg); padding: 5px 10px; font: inherit; outline: 0; }
+
+/* Notes */
+.notes-w { gap: 6px; }
+.notes-w textarea { flex: 1; min-height: 0; resize: none; background: none; border: 0; outline: 0; color: var(--fg); font: inherit; font-size: 14px; line-height: 1.45; padding: 0; user-select: text; -webkit-user-select: text; scrollbar-width: thin; }
+.notes-w textarea::placeholder { color: rgba(var(--ink), .5); }
+
+/* Countdown */
+.cd-num { font-size: 40px; font-weight: 300; line-height: 1.1; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.cd-num span { font-size: 15px; opacity: .75; }
+.cd-form { display: grid; gap: 6px; }
+.cd-form .row { justify-content: flex-start; }
+.size-S .cd-form input[type=date] { font-size: 12px; padding: 4px 6px; }
+
+/* Calendar */
+.cal-w { gap: 6px; }
+.cal { display: grid; gap: 4px; align-content: start; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.cal-ev { display: flex; gap: 10px; font-size: 13px; min-width: 0; }
+.cal-t { flex: none; width: 92px; opacity: .65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-next { font-size: 15px; font-weight: 500; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cal-day { font-size: 11px; font-weight: 600; opacity: .55; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; }
+.cal-day:first-child { margin-top: 0; }
+.cal-l .cal-t { width: 70px; }
+#calLinks { width: 100%; background: rgba(var(--ink), .07); border: 1px solid rgba(var(--ink), .14); border-radius: 10px; color: var(--fg); padding: 6px 10px; font: inherit; font-size: 12px; resize: vertical; margin-bottom: 6px; }
+.help { font-size: 12px; opacity: .8; }
+.help summary { cursor: pointer; }
+.help p { margin: 6px 0; }
 
 /* Focus */
 .center { text-align: center; align-items: center; }

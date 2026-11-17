@@ -91,7 +91,7 @@
 
     <section>
       <h3>Widgets</h3>
-      <div id="widgetChips" class="chips"></div>
+      <div id="widgetRows"></div>
       <button id="editLayout" class="chip wide">Edit layout</button>
       <h3 class="sub">Quote</h3>
       <div id="quoteModes" class="chips">
@@ -99,6 +99,19 @@
         <button data-mode="caption">Under the clock</button>
         <button data-mode="widget">As a widget</button>
       </div>
+    </section>
+
+    <section>
+      <h3>Calendar</h3>
+      <textarea id="calLinks" rows="2" placeholder="Paste your calendar's iCal link" aria-label="Calendar links, one per line"></textarea>
+      <button id="calSave" class="chip wide">Link calendar</button>
+      <p class="note" id="calNote"></p>
+      <details class="help">
+        <summary>Where do I find the link?</summary>
+        <p><b>Google Calendar:</b> on calendar.google.com open Settings, pick your calendar, and copy <b>Secret address in iCal format</b>.</p>
+        <p><b>iCloud:</b> in the Calendar app, right-click the calendar, choose <b>Share Calendar</b>, tick <b>Public Calendar</b> and copy the link. Anyone with an iCloud public link can see that calendar.</p>
+        <p>Add more than one calendar by putting each link on its own line. Links stay on this computer.</p>
+      </details>
     </section>
 
     <section>
