@@ -6,7 +6,7 @@ function waves(name, tones) {
 
 // Curated presets per mode, so every wallpaper blends into the toolbar.
 const PRESETS = {
-  ink:      waves('Ink',    ['#9a9a9a', '#767676', '#575757', '#3d3d3d', '#282828', '#171717', '#0a0a0a']),
+  ink:      waves('Ink',    ['#6c6c72', '#57575c', '#45454a', '#36363a', '#29292c', '#1e1e20', '#141415']),
   tide:     waves('Tide',   ['#4b7bb0', '#3d6797', '#30547d', '#244264', '#19314c', '#112337', '#0b1726']),
   velvet:   waves('Velvet', ['#e0488a', '#c23a76', '#9f2d61', '#7c214c', '#5a1738', '#3a0f25', '#200815']),
   aurora:   { name: 'Aurora',   base: '#05080d', c: ['#12a4b8', '#6a30d8', '#1db87f'] },
@@ -450,6 +450,7 @@ function locate(options) {
 // already allowed, so this never shows a prompt.
 async function refreshCoords() {
   try {
+    if (!S.coordsName) { S.coordsName = await placeName(S.coords); save(); }
     if ((await navigator.permissions.query({ name: 'geolocation' })).state !== 'granted') return;
     const c = await locate({ timeout: 8000, maximumAge: 30 * 60e3 });
     const moved = Math.hypot(c.lat - S.coords.lat, c.lon - S.coords.lon) > 0.02; // about 2 km
@@ -464,9 +465,9 @@ async function getWeather() {
   const here = S.useLocation && S.coords;
   if (here) {
     const cached = await cacheGet('weather');
-    if (!cached || Date.now() - cached.at > 30 * 60e3) await refreshCoords();
+    if (!cached || Date.now() - cached.at > 30 * 60e3 || !S.coordsName) await refreshCoords();
   }
-  const key = `v3|${here ? `${S.coords.lat.toFixed(2)},${S.coords.lon.toFixed(2)}` : S.city}|${S.units}`;
+  const key = `v3|${here ? `${S.coords.lat.toFixed(2)},${S.coords.lon.toFixed(2)},${S.coordsName}` : S.city}|${S.units}`;
   const cached = await cacheGet('weather');
   if (cached && cached.key === key && Date.now() - cached.at < 30 * 60e3) return cached.data;
 
@@ -823,13 +824,14 @@ async function getCalendar() {
   const links = ((await cacheGet('calLinks')) || []).map(calLink).filter(Boolean);
   if (!links.length) return null;
   const cached = await cacheGet('calCache');
-  if (cached && cached.key === links.join() && Date.now() - cached.at < 15 * 60e3) return cached.events.map((x) => ({ ...x, start: new Date(x.start), end: new Date(x.end) }));
+  if (cached && cached.key === links.join() && Date.now() - cached.at < 15 * 60e3 && cached.events.every((x) => typeof x.start === 'number')) return cached.events.map((x) => ({ ...x, start: new Date(x.start), end: new Date(x.end) }));
   const from = new Date(); from.setHours(0, 0, 0, 0);
   const to = new Date(+from + 8 * 864e5);
   const lists = await Promise.all(links.map(async (u) => parseICS(await (await fetch(u, { cache: 'no-store' })).text(), from, to)));
   const now = Date.now();
   const events = lists.flat().filter((x) => +x.end > now || x.allDay).sort((a, b) => a.start - b.start || a.allDay - b.allDay);
-  cacheSet('calCache', { key: links.join(), at: Date.now(), events });
+  // Chrome storage can't hold dates (they come back empty), so store them as numbers.
+  cacheSet('calCache', { key: links.join(), at: Date.now(), events: events.map((x) => ({ ...x, start: +x.start, end: +x.end })) });
   return events;
 }
 
@@ -843,7 +845,7 @@ function calendarWidget(size) {
     const diff = Math.round((new Date(d).setHours(0, 0, 0, 0) - t) / 864e5);
     return diff <= 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
   };
-  const row = (e, withDay) => h('div', { class: 'cal-ev' }, h('span', { class: 'cal-t' }, withDay && dayName(e.start) !== 'Today' ? `${dayName(e.start).split(',')[0]} ${time(e)}` : time(e)), h('span', { class: 'cal-n' }, e.title));
+  const row = (e) => h('div', { class: 'cal-ev' }, h('span', { class: 'cal-t' }, time(e)), h('span', { class: 'cal-n' }, e.title));
   getCalendar().then((events) => {
     if (!events) {
       body.replaceChildren(h('button', { class: 'chip', onclick: (e) => { e.stopPropagation(); openCalendarSettings(); } }, 'Link a calendar'));
@@ -851,12 +853,11 @@ function calendarWidget(size) {
     }
     if (!events.length) { body.textContent = 'Nothing coming up this week.'; return; }
     if (size === 'S') { body.replaceChildren(h('div', { class: 'muted' }, `Next · ${dayName(events[0].start)}`), h('div', { class: 'cal-next' }, events[0].title), h('div', { class: 'muted' }, time(events[0]))); return; }
-    if (size === 'M') { body.replaceChildren(...events.slice(0, 3).map((e) => row(e, true))); return; }
-    // Large: the coming week, grouped by day.
+    // Medium: the next three events; Large: the coming week. Both grouped by day.
     const groups = new Map();
-    for (const e of events) { const k = dayName(e.start); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
+    for (const e of size === 'M' ? events.slice(0, 3) : events) { const k = dayName(e.start); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
     body.className = 'cal cal-l';
-    body.replaceChildren(...[...groups].flatMap(([k, list]) => [h('div', { class: 'cal-day' }, k), ...list.map((e) => row(e, false))]));
+    body.replaceChildren(...[...groups].flatMap(([k, list]) => [h('div', { class: 'cal-day' }, k), ...list.map((e) => row(e))]));
   }).catch(() => { body.textContent = "Couldn't load your calendar. Check the link in Customize."; });
   return h('div', { class: 'cal-w' }, head, body);
 }
