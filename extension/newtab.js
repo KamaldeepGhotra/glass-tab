@@ -90,27 +90,31 @@ const FONTS = {
 
 // Soft tints only, so the clock never clashes with the wallpapers.
 // Light mode uses deep ink tones instead, so the clock stays readable.
+// Tints picked from the wallpapers, so there's a clock color for each family.
 const CLOCK_COLORS = {
-  white:    { name: 'White',    rgb: '255, 255, 255' },
-  warm:     { name: 'Warm',     rgb: '255, 226, 196' },
-  rose:     { name: 'Rose',     rgb: '255, 209, 224' },
-  mint:     { name: 'Mint',     rgb: '200, 245, 228' },
-  sky:      { name: 'Sky',      rgb: '206, 226, 255' },
-  lavender: { name: 'Lavender', rgb: '226, 214, 255' },
+  white:    { name: 'White',  rgb: '255, 255, 255' },
+  silver:   { name: 'Silver', rgb: '208, 213, 222' },
+  rose:     { name: 'Pink',   rgb: '255, 168, 204' },
+  warm:     { name: 'Peach',  rgb: '255, 194, 156' },
+  mint:     { name: 'Aqua',   rgb: '140, 236, 226' },
+  sky:      { name: 'Ice',    rgb: '166, 202, 255' },
+  lavender: { name: 'Violet', rgb: '204, 172, 255' },
 };
 const LIGHT_CLOCK_COLORS = {
-  ink:    { name: 'Ink',    rgb: '29, 29, 31' },
-  slate:  { name: 'Slate',  rgb: '60, 70, 92' },
-  navy:   { name: 'Navy',   rgb: '30, 52, 112' },
-  plum:   { name: 'Plum',   rgb: '92, 42, 102' },
-  forest: { name: 'Forest', rgb: '28, 82, 62' },
-  cocoa:  { name: 'Cocoa',  rgb: '102, 62, 40' },
+  ink:    { name: 'Ink',      rgb: '29, 29, 31' },
+  slate:  { name: 'Graphite', rgb: '74, 76, 84' },
+  plum:   { name: 'Berry',    rgb: '156, 34, 96' },
+  cocoa:  { name: 'Ember',    rgb: '166, 64, 30' },
+  forest: { name: 'Teal',     rgb: '14, 104, 112' },
+  navy:   { name: 'Navy',     rgb: '34, 62, 124' },
+  grape:  { name: 'Grape',    rgb: '92, 52, 156' },
 };
 
-// Sizes: S = 1 cell, M = 2 cells wide, L = 2 x 2 cells. First size is the default.
+// Sizes: S = 1 cell, M = 2 cells wide, L = 2 x 2 cells, XL = 2 x 3 cells.
+// First size is the default.
 const WIDGETS = {
-  weather: { name: 'Weather',     sizes: ['S', 'M'] },
-  todo:    { name: 'To-do',       sizes: ['M', 'L'] },
+  weather: { name: 'Weather',     sizes: ['S', 'M', 'L'] },
+  todo:    { name: 'To-do',       sizes: ['L', 'XL', 'M'] },
   focus:   { name: 'Focus timer', sizes: ['S', 'M'] },
   sites:   { name: 'Top sites',   sizes: ['M', 'L'] },
   recent:  { name: 'Recent tabs', sizes: ['M', 'L'] },
@@ -154,9 +158,9 @@ const DEFAULTS = {
   clockStyle: 'clear', clockFont: 'tall', clockSize: 140, clockColor: 'white', clockColorLight: 'ink', hour24: false,
   name: '', greeting: true, greetingSize: 22,
   quote: 'caption', // 'off' | 'caption' | 'widget'
-  layout: [{ k: 'weather', size: 'S' }, { k: 'todo', size: 'M' }, { k: 'sites', size: 'M' }],
+  layout: [{ k: 'weather', size: 'S' }, { k: 'todo', size: 'L' }, { k: 'sites', size: 'M' }],
   city: '', units: 'c', useLocation: false, coords: null,
-  todos: [],
+  todos: [], focusMinutes: 30,
 };
 
 const $ = (s) => document.querySelector(s);
@@ -362,6 +366,15 @@ function tick() {
 }
 
 // ---------- widgets ----------
+// Simple text symbols (not emoji), so they take the widget's color like the text does.
+function wxIcon(code) {
+  if (code === 0) return '☀\uFE0E';
+  if (code <= 2) return '⛅\uFE0E';
+  if (code <= 48) return '☁\uFE0E';
+  if (code <= 67 || (code >= 80 && code <= 82)) return '☂\uFE0E';
+  if (code <= 86) return '❄\uFE0E';
+  return '⚡\uFE0E';
+}
 function wxLabel(code) {
   if (code === 0) return 'Clear';
   if (code <= 2) return 'Partly cloudy';
@@ -376,7 +389,7 @@ function wxLabel(code) {
 
 async function getWeather() {
   const here = S.useLocation && S.coords;
-  const key = here ? `${S.coords.lat.toFixed(2)},${S.coords.lon.toFixed(2)}|${S.units}` : `${S.city}|${S.units}`;
+  const key = `v2|${here ? `${S.coords.lat.toFixed(2)},${S.coords.lon.toFixed(2)}` : S.city}|${S.units}`;
   const cached = await cacheGet('weather');
   if (cached && cached.key === key && Date.now() - cached.at < 30 * 60e3) return cached.data;
 
@@ -390,13 +403,23 @@ async function getWeather() {
     if (!r) throw new Error('City not found');
     lat = r.latitude; lon = r.longitude; place = r.name;
   }
-  const unit = S.units === 'f' ? '&temperature_unit=fahrenheit' : '';
-  const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=3${unit}`)).json();
+  const unit = S.units === 'f' ? '&temperature_unit=fahrenheit&wind_speed_unit=mph' : '';
+  const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+    + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code'
+    + '&hourly=temperature_2m,weather_code&forecast_hours=7'
+    + `&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=5${unit}`)).json();
+  const c = j.current;
   const data = {
     place,
-    temp: j.current.temperature_2m,
-    label: wxLabel(j.current.weather_code),
-    days: j.daily.time.map((t, i) => ({ t, max: j.daily.temperature_2m_max[i], min: j.daily.temperature_2m_min[i] })),
+    temp: c.temperature_2m,
+    code: c.weather_code,
+    label: wxLabel(c.weather_code),
+    feels: c.apparent_temperature,
+    humidity: c.relative_humidity_2m,
+    wind: c.wind_speed_10m,
+    windUnit: S.units === 'f' ? 'mph' : 'km/h',
+    hours: j.hourly.time.slice(1).map((t, i) => ({ t, temp: j.hourly.temperature_2m[i + 1], code: j.hourly.weather_code[i + 1] })),
+    days: j.daily.time.map((t, i) => ({ t, max: j.daily.temperature_2m_max[i], min: j.daily.temperature_2m_min[i], code: j.daily.weather_code[i], rain: j.daily.precipitation_probability_max?.[i] })),
   };
   cacheSet('weather', { key, at: Date.now(), data });
   return data;
@@ -411,52 +434,99 @@ function weatherWidget(size) {
   if (S.city || S.useLocation) {
     getWeather()
       .then((d) => {
+        const deg = (t) => `${Math.round(t)}°`;
+        const day = (t, i) => (i === 0 ? 'Today' : new Date(`${t}T12:00`).toLocaleDateString(undefined, { weekday: 'short' }));
         const now = h('div', {},
-          h('div', { class: 'wx-temp' }, `${Math.round(d.temp)}°`),
+          h('div', { class: 'wx-temp' }, deg(d.temp)),
           h('div', {}, d.label),
           h('div', { class: 'muted' }, d.place));
         if (size === 'S') { body.replaceChildren(now); return; }
-        const days = h('div', { class: 'wx-days' }, ...d.days.flatMap((day, i) => [
-          h('span', {}, i === 0 ? 'Today' : new Date(`${day.t}T12:00`).toLocaleDateString(undefined, { weekday: 'short' })),
-          h('span', {}, `${Math.round(day.max)}° / ${Math.round(day.min)}°`),
-        ]));
-        body.replaceChildren(now, days);
+        if (size === 'M') {
+          body.replaceChildren(now, h('div', { class: 'wx-days' }, ...d.days.slice(0, 3).flatMap((x, i) => [
+            h('span', {}, day(x.t, i)), h('span', {}, `${deg(x.max)} / ${deg(x.min)}`)])));
+          return;
+        }
+        // Large: current details, the next few hours and five days.
+        const hour = (t) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric' });
+        body.className = 'wx wx-l';
+        body.replaceChildren(
+          h('div', { class: 'wx-now' }, now, h('div', { class: 'wx-facts' },
+            h('span', {}, `Feels like ${deg(d.feels)}`),
+            h('span', {}, `Humidity ${Math.round(d.humidity)}%`),
+            h('span', {}, `Wind ${Math.round(d.wind)} ${d.windUnit}`),
+            h('span', {}, `High ${deg(d.days[0].max)} · Low ${deg(d.days[0].min)}`))),
+          h('div', { class: 'wx-strip' }, ...d.hours.map((x) => h('div', {}, h('span', { class: 'muted' }, hour(x.t)), h('b', {}, wxIcon(x.code)), h('span', {}, deg(x.temp))))),
+          h('div', { class: 'wx-strip' }, ...d.days.map((x, i) => h('div', {}, h('span', { class: 'muted' }, day(x.t, i)), h('b', {}, wxIcon(x.code)), h('span', {}, `${deg(x.max)} ${deg(x.min)}`)))),
+        );
       })
       .catch(() => { body.textContent = "Couldn't load weather. Check the city name."; });
   }
   return h('div', {}, h('h3', {}, 'Weather'), body);
 }
 
+// To-do: unfinished tasks stay on top, finished ones sink to the bottom and can be
+// cleared in one go. Click a task to edit it; empty it to delete. Enter keeps adding.
 function todoWidget() {
   const list = h('ul', { class: 'todo' });
-  const draw = () => list.replaceChildren(...S.todos.map((t, i) => h('li', { class: t.done ? 'done' : '' },
-    h('button', { class: 'check', 'aria-label': t.done ? 'Mark not done' : 'Mark done', onclick: () => { t.done = !t.done; save(); draw(); } }),
-    h('span', {}, t.text),
-    h('button', { class: 'del', 'aria-label': 'Delete task', onclick: () => { S.todos.splice(i, 1); save(); draw(); } }, '×'),
-  )));
+  const left = h('span', { class: 'muted' });
+  const clear = h('button', { class: 'linkish', onclick: () => { S.todos = S.todos.filter((t) => !t.done); save(); draw(); } });
+  const draw = () => {
+    const open = S.todos.filter((t) => !t.done), done = S.todos.filter((t) => t.done);
+    left.textContent = S.todos.length ? (open.length ? `${open.length} left` : 'All done') : '';
+    clear.textContent = `Clear ${done.length} done`;
+    clear.hidden = !done.length;
+    list.replaceChildren(...[...open, ...done].map((t) => {
+      const text = h('span', { tabindex: '0', title: 'Click to edit' }, t.text);
+      text.addEventListener('click', () => {
+        if (text.isContentEditable) return;
+        text.contentEditable = 'plaintext-only';
+        text.focus();
+        getSelection().selectAllChildren(text);
+      });
+      text.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); text.blur(); }
+        if (e.key === 'Escape') { text.textContent = t.text; text.blur(); }
+      });
+      text.addEventListener('blur', () => {
+        text.contentEditable = 'false';
+        const v = text.textContent.trim();
+        if (v === t.text) return;
+        if (v) t.text = v.slice(0, 120); else S.todos.splice(S.todos.indexOf(t), 1);
+        save();
+        draw();
+      });
+      return h('li', { class: t.done ? 'done' : '' },
+        h('button', { class: 'check', 'aria-label': t.done ? 'Mark not done' : 'Mark done', onclick: () => { t.done = !t.done; save(); draw(); } }),
+        text,
+        h('button', { class: 'del', 'aria-label': 'Delete task', onclick: () => { S.todos.splice(S.todos.indexOf(t), 1); save(); draw(); } }, '×'));
+    }));
+  };
   draw();
-  const input = h('input', { placeholder: 'Add a task', maxlength: '80', 'aria-label': 'Add a task' });
+  const input = h('input', { placeholder: 'Add a task and press Enter', maxlength: '120', 'aria-label': 'Add a task' });
   const form = h('form', { onsubmit: (e) => {
     e.preventDefault();
     const text = input.value.trim();
-    if (!text || S.todos.length >= 20) return;
+    if (!text || S.todos.length >= 100) return;
     S.todos.push({ text, done: false });
     input.value = '';
     save();
     draw();
+    list.lastElementChild && [...list.children].filter((li) => !li.classList.contains('done')).pop()?.scrollIntoView({ block: 'nearest' });
   } }, input);
-  return h('div', {}, h('h3', {}, 'Today'), list, form);
+  return h('div', { class: 'todo-w' }, h('div', { class: 'whead' }, h('h3', {}, 'Today'), left, clear), list, form);
 }
 
 // Focus timer state lives in chrome.storage.local so every tab shows the same timer.
 // The background worker fires the "done" notification even if no tab is open.
-const FOCUS_SECONDS = 25 * 60;
+// Lengths to choose from: 15-minute steps up to an hour, then 30-minute steps.
+const FOCUS_LENGTHS = [15, 30, 45, 60, 90, 120];
+const focusSeconds = () => S.focusMinutes * 60;
 let focusState = null;
 const focusViews = new Set();
 
 function freshFocus(f) {
   const today = new Date().toDateString();
-  const s = { endAt: null, left: FOCUS_SECONDS, day: today, done: 0, ...f };
+  const s = { endAt: null, left: focusSeconds(), len: focusSeconds(), day: today, done: 0, ...f };
   if (s.day !== today) { s.day = today; s.done = 0; }
   return s;
 }
@@ -477,14 +547,25 @@ function drawFocus() { focusViews.forEach((draw) => draw()); }
 function focusWidget(size) {
   const time = h('div', { class: 'focus-time' });
   const start = h('button', { class: 'chip' });
-  const reset = h('button', { class: 'chip', onclick: () => setFocus({ ...focusState, endAt: null, left: FOCUS_SECONDS }) }, 'Reset');
+  const reset = h('button', { class: 'chip', onclick: () => setFocus({ ...focusState, endAt: null, left: focusSeconds(), len: focusSeconds() }) }, 'Reset');
+  // − and + pick the session length while the timer isn't running.
+  const step = (dir) => {
+    const i = FOCUS_LENGTHS.indexOf(S.focusMinutes);
+    const next = FOCUS_LENGTHS[Math.min(FOCUS_LENGTHS.length - 1, Math.max(0, (i < 0 ? 1 : i) + dir))];
+    if (next === S.focusMinutes) return;
+    S.focusMinutes = next;
+    save();
+    setFocus({ ...focusState, endAt: null, left: focusSeconds(), len: focusSeconds() });
+  };
+  const less = h('button', { class: 'adj', 'aria-label': 'Shorter session', onclick: () => step(-1) }, '−');
+  const more = h('button', { class: 'adj', 'aria-label': 'Longer session', onclick: () => step(1) }, '+');
   const count = h('div', { class: 'muted' });
   start.onclick = () => {
     const f = focusState;
     if (f.endAt) setFocus({ ...f, endAt: null, left: focusLeft(f) });
     else setFocus({ ...f, endAt: Date.now() + f.left * 1000 });
   };
-  const el = h('div', { class: 'center' }, h('h3', {}, 'Focus'), time, h('div', { class: 'row' }, start, reset), size === 'M' ? count : null);
+  const el = h('div', { class: 'center' }, h('h3', {}, 'Focus'), h('div', { class: 'focus-set' }, less, time, more), h('div', { class: 'row' }, start, reset), size === 'M' ? count : null);
   const draw = () => {
     if (!el.isConnected && focusViews.has(draw) && el.dataset.drawn) { focusViews.delete(draw); return; }
     el.dataset.drawn = '1';
@@ -492,10 +573,16 @@ function focusWidget(size) {
     let left = focusLeft(focusState);
     // Without Chrome (preview), finish the session here instead of in the background worker.
     if (!hasChrome && focusState.endAt && left === 0) {
-      focusState = freshFocus({ ...focusState, endAt: null, left: FOCUS_SECONDS, done: focusState.done + 1 });
-      left = FOCUS_SECONDS;
+      focusState = freshFocus({ ...focusState, endAt: null, left: focusSeconds(), done: focusState.done + 1 });
+      left = focusSeconds();
     }
-    time.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    const hrs = Math.floor(left / 3600), mins = Math.floor(left / 60) % 60, secs = String(left % 60).padStart(2, '0');
+    time.textContent = hrs ? `${hrs}:${String(mins).padStart(2, '0')}:${secs}` : `${mins}:${secs}`;
+    // Lengths can only change before a session starts or after Reset.
+    const idle = !focusState.endAt && left === (focusState.len || focusSeconds());
+    less.hidden = more.hidden = !idle;
+    less.disabled = S.focusMinutes <= FOCUS_LENGTHS[0];
+    more.disabled = S.focusMinutes >= FOCUS_LENGTHS[FOCUS_LENGTHS.length - 1];
     start.textContent = focusState.endAt ? 'Pause' : 'Start';
     count.textContent = `${focusState.done} ${focusState.done === 1 ? 'session' : 'sessions'} today`;
   };

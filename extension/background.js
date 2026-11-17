@@ -1,5 +1,3 @@
-const FOCUS_SECONDS = 25 * 60;
-
 importScripts('gg.js');
 
 // Show the setup guide once, right after install.
@@ -67,7 +65,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   const { focus: f = {} } = await chrome.storage.local.get('focus');
   const today = new Date().toDateString();
   const done = (f.day === today ? f.done || 0 : 0) + 1;
-  await chrome.storage.local.set({ focus: { endAt: null, left: FOCUS_SECONDS, day: today, done } });
+  const len = f.len || 30 * 60; // the length the user picked
+  await chrome.storage.local.set({ focus: { endAt: null, left: len, len, day: today, done } });
   chrome.notifications.create('focus-done', {
     type: 'basic',
     iconUrl: 'icons/icon128.png',
