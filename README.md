@@ -41,3 +41,7 @@ After editing files, click the reload icon on the Glass Tab card in `chrome://ex
 - **Glass Google search results** is opt-in (settings, Glass section). Turning it on asks for access to google.com and registers `google.js` and `google.css` for search pages; turning it off removes both. It follows Google's own light or dark mode, using the matching wallpaper, and only runs on google.com. Google's class names change occasionally, so check these styles after big Google redesigns.
 - A setup guide (`welcome.html`) opens on first install. Set `THEME_STORE_URLS` in `welcome.js` once the themes are published.
 - Clock fonts are system fonts, so nothing is downloaded. Some look best on macOS.
+
+## License
+
+Copyright © 2026 Kam Ghotra. All rights reserved. The code is shared so people can see how Glass Tab works; it may not be copied, changed or republished without permission.
