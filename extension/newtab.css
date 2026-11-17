@@ -346,3 +346,11 @@ main { height: 100%; display: flex; flex-direction: column; align-items: center;
 .tour-btns #tourBack { margin-left: auto; }
 .tour-btns .chip.primary { background: var(--on-bg); color: var(--on-fg); border-color: transparent; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { #tourRing, #tourCard { transition: none; animation: none; } }
+#tourExtra:not(:empty) { display: grid; gap: 8px; margin: -4px 0 14px; }
+#tourExtra .chips { margin: 0; }
+#tourExtra input { width: 100%; background: rgba(var(--ink), .08); border: 1px solid rgba(var(--ink), .16); border-radius: 10px; color: var(--fg); padding: 7px 10px; font: inherit; font-size: 14px; outline: 0; }
+#tourExtra input:focus { border-color: rgba(var(--ink), .4); }
+.tour-form { display: flex; gap: 8px; }
+.tour-form .chip { flex: none; }
+.tour-status:empty { display: none; }
+#tourExtra .help p { margin: 4px 0; }

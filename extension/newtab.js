@@ -1234,14 +1234,92 @@ tick();
 // A short walk-through on the first new tab: each step lights up one part of the page
 // with a glass card beside it. Shown once; "Take the tour" in Customize replays it.
 const SHORTCUT = /Mac/i.test(navigator.platform) ? '⌘⇧K' : 'Ctrl+Shift+K';
+const placed = (k) => S.layout.some((w) => w.k === k);
+const widgetEl = (k) => `.widget[data-k="${k}"]`;
+
+// Small setup forms shown inside the tour card. Each returns the elements to show.
+const TOUR_SETUP = {
+  pick() {
+    const keys = ['weather', 'calendar', 'todo', 'notes', 'focus', 'countdown', 'sites', 'recent'];
+    const chips = h('div', { class: 'chips' }, ...keys.map((k) => h('button', {
+      class: placed(k) ? 'on' : '',
+      onclick: (e) => {
+        if (placed(k)) S.layout = S.layout.filter((w) => w.k !== k);
+        else S.layout.push({ k, size: WIDGETS[k].def });
+        e.currentTarget.classList.toggle('on', placed(k));
+        update();
+        renderWidgets();
+        showTourStep(tourStep); // re-measure around the new widgets
+      },
+    }, WIDGETS[k].name)));
+    return [chips];
+  },
+  weather() {
+    const status = h('div', { class: 'muted tour-status' }, S.useLocation && S.coordsName ? `Showing ${S.coordsName}.` : S.city ? `Showing ${S.city}.` : '');
+    const city = h('input', { placeholder: 'Your city, like London, ON', value: S.city, 'aria-label': 'City' });
+    const setCity = () => {
+      const v = city.value.trim();
+      if (!v || v === S.city) return;
+      S.city = v; S.useLocation = false;
+      update(); renderWidgets();
+      status.textContent = `Showing ${v}.`;
+    };
+    city.addEventListener('change', setCity);
+    city.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); setCity(); } });
+    const here = h('button', { class: 'chip', onclick: async () => {
+      if (S.useLocation) { status.textContent = `Showing ${S.coordsName || 'your location'}.`; return; }
+      status.textContent = 'Finding you…';
+      await useMyLocation();
+      status.textContent = S.useLocation ? `Showing ${S.coordsName || 'your location'}.` : $('#locNote').textContent;
+    } }, 'Use my location');
+    return [h('div', { class: 'tour-form' }, city, here), status];
+  },
+  calendar() {
+    const status = h('div', { class: 'muted tour-status' });
+    const link = h('input', { placeholder: "Paste your calendar's iCal link", 'aria-label': 'Calendar link' });
+    cacheGet('calLinks').then((l) => { if (l?.length) { link.value = l[0]; status.textContent = 'Calendar linked.'; } });
+    const go = h('button', { class: 'chip', onclick: async () => {
+      $('#calLinks').value = link.value;
+      await saveCalendarLinks();
+      status.textContent = $('#calNote').textContent;
+    } }, 'Link');
+    const help = h('details', { class: 'help' }, h('summary', {}, 'Where do I find it?'),
+      h('p', {}, 'Google Calendar: Settings › your calendar › "Secret address in iCal format".'),
+      h('p', {}, 'iCloud: in the Calendar app, share the calendar as a Public Calendar and copy the link.'));
+    return [h('div', { class: 'tour-form' }, link, go), status, help];
+  },
+  todo() {
+    const status = h('div', { class: 'muted tour-status' });
+    const task = h('input', { placeholder: 'Your first task, then press Enter', maxlength: '120', 'aria-label': 'Task' });
+    task.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const text = task.value.trim();
+      if (!text || S.todos.length >= TODO_MAX) return;
+      S.todos.push({ text, done: false });
+      save(); renderWidgets();
+      task.value = '';
+      status.textContent = `Added. ${S.todos.filter((t) => !t.done).length} on your list.`;
+    });
+    return [task, status];
+  },
+};
+
+// The tour: what each part is, then a quick setup for the widgets that need it.
+// Steps with "when" only appear if that widget is on.
 const TOUR = [
-  { title: 'Welcome to Glass Tab', text: 'A quick look around. It takes about 30 seconds.', next: 'Show me' },
+  { title: 'Welcome to Glass Tab', text: "Let's set things up. It takes about a minute, and you can skip any step.", next: "Let's go" },
+  { el: '#widgets', title: 'Pick your widgets', text: 'Choose what you want on your new tab. You can change this any time.', setup: 'pick' },
+  { el: widgetEl('weather'), when: () => placed('weather'), title: 'Weather', text: 'Type your city, or let Glass Tab use your location.', setup: 'weather' },
+  { el: widgetEl('calendar'), when: () => placed('calendar'), title: 'Calendar', text: 'Link your Google or iCloud calendar to see what\'s coming up. The link stays on this computer. It updates every 15 minutes.', setup: 'calendar' },
+  { el: widgetEl('todo'), when: () => placed('todo'), title: 'To-do', text: 'Add a task or two. Click a task later to edit it.', setup: 'todo' },
+  { el: '#widgets', title: 'Move and resize', text: 'Press and hold any widget to move it. While editing, the S, M and L buttons change its size and × removes it.' },
   { el: '#search', title: 'Search', text: `Search Google or type a website here. On any other site, press ${SHORTCUT} to bring up the same glass search bar.` },
-  { el: '#clock', title: 'Your clock', text: 'Give it clear or frosted glass, and pick its font, color and size in Customize. The greeting and quote can be changed or turned off there too.' },
-  { el: '#widgets', title: 'Widgets', text: 'Press and hold any widget to move it. While editing, the S, M and L buttons change its size and × removes it.' },
-  { el: '#gear', title: 'Customize', text: 'Wallpapers, light or dark, motion, glass, widgets, your calendar and weather all live here. You can also make your Google searches glass.' },
+  { el: '#gear', title: 'Customize', text: 'This round button in the corner opens Customize: wallpapers, light or dark, motion, glass, the clock, widgets and more. You can also make your Google searches glass.' },
+  { el: '#gear', title: 'A seamless top bar', text: "If the top of the page doesn't blend into Chrome's top bar, open Customize and change Top bar under Appearance: Chrome's own if you have no theme, Glass Tab theme if you added ours." },
   { title: "You're all set", text: 'Make it yours. You can take this tour again any time from Customize.', next: 'Done' },
 ];
+const tourSteps = () => TOUR.filter((s) => !s.when || s.when());
 let tourStep = -1;
 function startTour() {
   $('#panel').hidden = true;
@@ -1257,9 +1335,19 @@ function endTour() {
   try { localStorage.setItem('glassTabTour', '1'); } catch {}
   showFooterTip();
 }
+let tourShown = null;
 function showTourStep(i) {
+  const steps = tourSteps();
+  i = Math.min(i, steps.length - 1);
   tourStep = i;
-  const step = TOUR[i], ring = $('#tourRing'), card = $('#tourCard');
+  const step = steps[i], ring = $('#tourRing'), card = $('#tourCard');
+  // Only rebuild the setup form when the step changes, so typing isn't lost on re-measure.
+  if (tourShown !== step) {
+    tourShown = step;
+    $('#tourExtra').replaceChildren(...(step.setup ? TOUR_SETUP[step.setup]() : []));
+    $('#tourTitle').textContent = step.title;
+    $('#tourText').textContent = step.text;
+  }
   const target = step.el && $(step.el);
   target?.scrollIntoView({ block: 'nearest' });
   const box = target && target.offsetHeight ? target.getBoundingClientRect() : null;
@@ -1270,33 +1358,39 @@ function showTourStep(i) {
   } else {
     Object.assign(ring.style, { left: '50%', top: '45%', width: '0px', height: '0px', borderRadius: '50%' });
   }
-  $('#tourCount').textContent = `${i + 1} of ${TOUR.length}`;
-  $('#tourTitle').textContent = step.title;
-  $('#tourText').textContent = step.text;
+  $('#tourCount').textContent = `${i + 1} of ${steps.length}`;
   $('#tourNext').textContent = step.next || 'Next';
   $('#tourBack').hidden = i === 0;
-  $('#tourSkip').hidden = i === TOUR.length - 1;
-  // Card goes below the lit-up part if there's room, otherwise above; centered otherwise.
-  const w = Math.min(340, innerWidth - 32);
+  $('#tourSkip').hidden = i === steps.length - 1;
+  // Card goes below the lit-up part if there's room, otherwise above, otherwise beside.
+  const w = Math.min(step.setup ? 380 : 340, innerWidth - 32);
   card.style.width = `${w}px`;
   const h = card.offsetHeight;
   let left = innerWidth / 2 - w / 2, top = innerHeight * 0.45 - h / 2;
   if (box) {
     left = Math.min(innerWidth - w - 16, Math.max(16, box.left + box.width / 2 - w / 2));
-    top = box.bottom + pad + 14 + h < innerHeight ? box.bottom + pad + 14 : box.top - pad - 14 - h;
-    top = Math.max(16, top);
+    const below = box.bottom + pad + 14, above = box.top - pad - 14 - h;
+    if (below + h < innerHeight) top = below;
+    else if (above > 16) top = above;
+    else {
+      // Tall target: sit beside it instead.
+      top = Math.max(16, Math.min(innerHeight - h - 16, box.top));
+      left = box.right + pad + 14 + w < innerWidth ? box.right + pad + 14 : Math.max(16, box.left - pad - 14 - w);
+    }
   }
   Object.assign(card.style, { left: `${left}px`, top: `${top}px` });
-  $('#tourNext').focus({ preventScroll: true });
+  const first = $('#tourExtra input');
+  (first && !first.value ? first : $('#tourNext')).focus({ preventScroll: true });
 }
-$('#tourNext').addEventListener('click', () => (tourStep < TOUR.length - 1 ? showTourStep(tourStep + 1) : endTour()));
+$('#tourNext').addEventListener('click', () => (tourStep < tourSteps().length - 1 ? showTourStep(tourStep + 1) : endTour()));
 $('#tourBack').addEventListener('click', () => showTourStep(Math.max(0, tourStep - 1)));
 $('#tourSkip').addEventListener('click', endTour);
-$('#replayTour').addEventListener('click', startTour);
+$('#replayTour').addEventListener('click', () => { tourShown = null; startTour(); });
 addEventListener('resize', () => { if (tourStep >= 0) showTourStep(tourStep); });
 document.addEventListener('keydown', (e) => {
   if (tourStep < 0) return;
   if (e.key === 'Escape') endTour();
+  if (e.target.closest?.('input, textarea')) return; // arrows move the text cursor there
   if (e.key === 'ArrowRight') $('#tourNext').click();
   if (e.key === 'ArrowLeft' && tourStep > 0) showTourStep(tourStep - 1);
 }, true);
