@@ -32,7 +32,8 @@
   "optional_host_permissions": ["https://www.google.com/*", "https://calendar.google.com/*", "https://*.icloud.com/*"],
   "host_permissions": [
     "https://api.open-meteo.com/*",
-    "https://geocoding-api.open-meteo.com/*"
+    "https://geocoding-api.open-meteo.com/*",
+    "https://api.bigdatacloud.net/*"
   ],
   "web_accessible_resources": [
     { "resources": ["_favicon/*"], "matches": ["<all_urls>"], "extension_ids": ["*"] }

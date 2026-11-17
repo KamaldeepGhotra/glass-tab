@@ -171,7 +171,7 @@ const DEFAULTS = {
   name: '', greeting: true, greetingSize: 22,
   quote: 'caption', // 'off' | 'caption' | 'widget'
   layout: [{ k: 'weather', size: 'S' }, { k: 'todo', size: 'L' }, { k: 'sites', size: 'M' }],
-  city: '', units: 'c', useLocation: false, coords: null,
+  city: '', units: 'c', useLocation: false, coords: null, coordsName: '',
   todos: [], focusMinutes: 30, notes: '', countdown: { title: '', date: '' },
 };
 
@@ -399,21 +399,79 @@ function wxLabel(code) {
   return 'Thunderstorms';
 }
 
+// Finds a typed city. "London, ON", "London ON" or "Paris, France" pick the right
+// one: the last part is matched against the region (name, start of it, or its
+// initials, so ON = Ontario and BC = British Columbia) and the country.
+async function findCity(text) {
+  const search = async (name) => (await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=20`)).json()).results || [];
+  const parts = text.includes(',') ? text.split(',').map((x) => x.trim()) : [text];
+  let name = parts[0], region = parts.slice(1).join(' ');
+  let results = await search(name);
+  if (!results.length && !region && /\s/.test(text)) {
+    // "London ON": try the last word as the region.
+    name = text.replace(/\s+\S+$/, '');
+    region = text.split(/\s+/).pop();
+    results = await search(name);
+  }
+  if (region) {
+    const want = region.toLowerCase().replace(/\./g, '');
+    const alias = { uk: 'gb', usa: 'us' }[want] || want;
+    const initials = (x = '') => x.split(/\s+/).map((w) => w[0]).join('').toLowerCase();
+    const fits = (r) => [r.admin1, r.country].some((x) => x && (x.toLowerCase() === want || x.toLowerCase().startsWith(want) || initials(x) === want))
+      || r.country_code?.toLowerCase() === alias;
+    results = results.filter(fits);
+  }
+  const r = results[0];
+  if (!r) throw new Error('City not found');
+  return { lat: r.latitude, lon: r.longitude, place: r.admin1 && r.admin1 !== r.name ? `${r.name}, ${r.admin1}` : r.name };
+}
+
+// Name for a spot on the map ("London, ON"), from BigDataCloud's free lookup.
+async function placeName({ lat, lon }) {
+  try {
+    const j = await (await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`)).json();
+    const town = j.city || j.locality;
+    const region = j.principalSubdivisionCode?.split('-')[1] || j.principalSubdivision;
+    return town ? [town, region].filter(Boolean).join(', ') : '';
+  } catch { return ''; }
+}
+
+function locate(options) {
+  return new Promise((res, rej) => navigator.geolocation.getCurrentPosition(
+    (p) => res({ lat: p.coords.latitude, lon: p.coords.longitude }), rej,
+    { enableHighAccuracy: false, timeout: 20000, maximumAge: 10 * 60e3, ...options }));
+}
+
+// When you've moved since last time, follow you, quietly: only if location is
+// already allowed, so this never shows a prompt.
+async function refreshCoords() {
+  try {
+    if ((await navigator.permissions.query({ name: 'geolocation' })).state !== 'granted') return;
+    const c = await locate({ timeout: 8000, maximumAge: 30 * 60e3 });
+    const moved = Math.hypot(c.lat - S.coords.lat, c.lon - S.coords.lon) > 0.02; // about 2 km
+    if (!moved) return;
+    S.coords = c;
+    S.coordsName = await placeName(c);
+    save();
+  } catch {}
+}
+
 async function getWeather() {
   const here = S.useLocation && S.coords;
-  const key = `v2|${here ? `${S.coords.lat.toFixed(2)},${S.coords.lon.toFixed(2)}` : S.city}|${S.units}`;
+  if (here) {
+    const cached = await cacheGet('weather');
+    if (!cached || Date.now() - cached.at > 30 * 60e3) await refreshCoords();
+  }
+  const key = `v3|${here ? `${S.coords.lat.toFixed(2)},${S.coords.lon.toFixed(2)}` : S.city}|${S.units}`;
   const cached = await cacheGet('weather');
   if (cached && cached.key === key && Date.now() - cached.at < 30 * 60e3) return cached.data;
 
   let lat, lon, place;
   if (here) {
     ({ lat, lon } = S.coords);
-    place = 'Current location';
+    place = S.coordsName || 'Your location';
   } else {
-    const geo = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(S.city)}&count=1`)).json();
-    const r = geo.results?.[0];
-    if (!r) throw new Error('City not found');
-    lat = r.latitude; lon = r.longitude; place = r.name;
+    ({ lat, lon, place } = await findCity(S.city));
   }
   const unit = S.units === 'f' ? '&temperature_unit=fahrenheit&wind_speed_unit=mph' : '';
   const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
@@ -970,20 +1028,43 @@ function openWeatherSettings() {
   $('#city').focus();
 }
 
+// Chrome shows its normal location prompt for the new tab page; no manifest
+// permission (and no install warning) needed. If finding you fails, the city you
+// had stays, and the note says why.
+const LOCATION_ERRORS = {
+  1: 'Location is blocked. Allow it when Chrome asks, and check System Settings › Privacy & Security › Location Services is on for Chrome.',
+  2: "Your computer couldn't work out where you are. Check Wi-Fi is on, then try again.",
+  3: 'Finding your location took too long. Try again.',
+};
 async function useMyLocation() {
-  const btn = $('#useLocation');
-  try {
-    // Chrome shows its normal location prompt for the new tab page; no manifest
-    // permission (and no install warning) needed.
-    btn.textContent = 'Finding you…';
-    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 60000 }));
-    S.coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-    S.useLocation = true;
-    S.city = '';
+  const btn = $('#useLocation'), note = $('#locNote');
+  if (S.useLocation) { // already on: tapping again turns it off
+    S.useLocation = false;
+    note.textContent = S.city ? `Showing ${S.city}.` : 'Type a city to see its weather.';
     update();
     renderWidgets();
-  } catch {
-    btn.textContent = "Couldn't get your location";
+    return;
+  }
+  btn.textContent = 'Finding you…';
+  btn.disabled = true;
+  note.textContent = '';
+  try {
+    let c;
+    // Macs often fail the first quick try, so give it one more, slower one.
+    try { c = await locate(); } catch (e) { if (e.code === 1) throw e; c = await locate({ maximumAge: 0, timeout: 30000 }); }
+    S.coords = c;
+    S.coordsName = await placeName(c);
+    S.useLocation = true;
+    S.city = '';
+    note.textContent = S.coordsName ? `Found you in ${S.coordsName}.` : '';
+    update();
+    renderWidgets();
+  } catch (e) {
+    note.textContent = `${LOCATION_ERRORS[e.code] || "Couldn't get your location."}${S.city ? ` Still showing ${S.city}.` : ''}`;
+    syncPanel();
+  } finally {
+    btn.disabled = false;
+    syncPanel();
   }
 }
 
@@ -1099,7 +1180,7 @@ function syncPanel() {
   if (document.activeElement !== $('#name')) $('#name').value = S.name;
   $('#city').value = S.city;
   $('#units').value = S.units;
-  $('#useLocation').textContent = S.useLocation ? 'Using your location' : 'Use my location';
+  if (!$('#useLocation').disabled) $('#useLocation').textContent = S.useLocation ? `Using your location${S.coordsName ? ` (${S.coordsName})` : ''} · Turn off` : 'Use my location';
 }
 
 function update() {
