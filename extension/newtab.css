@@ -4,7 +4,7 @@
   --c1: #1d6f8a;
   --c2: #4a2b7c;
   --c3: #1e7f62;
-  --bar: #161a26; /* must match "toolbar" in theme/manifest.json */
+  --bar: #282828; /* set per mode from the Top bar setting (TOP_BAR in newtab.js) */
   --blur: 18px;
   --tint: 0.1;
   --clock-font: system-ui;
@@ -32,7 +32,7 @@ html.light {
   --c1: #a9c4ff;
   --c2: #d7b8ff;
   --c3: #9fe0e6;
-  --bar: #ffffff; /* Chrome's default light toolbar, and "toolbar" in theme-light/manifest.json */
+  --bar: #eef2f9;
   --clock-rgb: 29, 29, 31;
 
   --fg: #1d1d1f;

@@ -165,7 +165,7 @@ const QUOTES = [
 
 const DEFAULTS = {
   appearance: 'auto', // 'auto' follows the system / Chrome setting
-  wallpaper: 'aurora', wallpaperLight: 'mist', animated: true, fps: 60,
+  wallpaper: 'aurora', wallpaperLight: 'mist', animated: true, fps: 60, topBar: 'chrome',
   blur: 18, tint: 10, liquid: true, solidGlass: false,
   clockStyle: 'clear', clockFont: 'tall', clockSize: 140, clockColor: 'white', clockColorLight: 'ink', hour24: false,
   name: '', greeting: true, greetingSize: 22,
@@ -264,13 +264,17 @@ function presetFor(m) {
   const set = modeSet(m);
   return set.presets[S[set.wpKey]] || Object.values(set.presets)[0];
 }
+// The top of the page fades into Chrome's toolbar. Without a theme that's Chrome's
+// own charcoal or pale gray (switching with the system); with one of the Glass Tab
+// themes it's their navy or white.
+const TOP_BAR = { chrome: { dark: '#282828', light: '#eef2f9' }, theme: { dark: '#161a26', light: '#ffffff' } };
 function varsFor(m) {
   const set = modeSet(m), p = presetFor(m);
   const f = FONTS[S.clockFont] || FONTS.tall;
   // Thin strokes leave no surface to show glass, so glass styles get a heavier weight.
   const weight = S.clockStyle !== 'solid' && f.weight < 400 ? 400 : f.weight;
   return {
-    '--base': p.base, '--c1': p.c[0], '--c2': p.c[1], '--c3': p.c[2],
+    '--base': p.base, '--c1': p.c[0], '--c2': p.c[1], '--c3': p.c[2], '--bar': (TOP_BAR[S.topBar] || TOP_BAR.chrome)[m],
     '--wave': p.tones ? waveURL(p.tones) : 'none', '--blob-display': p.tones ? 'none' : 'block',
     '--blur': `${S.blur}px`, '--tint': String(S.tint / 100),
     '--clock-font': f.stack, '--clock-weight': String(weight), '--clock-size': `${S.clockSize}px`, '--greeting-size': `${S.greetingSize}px`,
@@ -1105,6 +1109,7 @@ function buildPanel() {
   $('#quoteModes').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setQuoteMode(b.dataset.mode)));
 
   const bind = (id, key, prop, cast = (v) => v) => $(id).addEventListener('input', (e) => { S[key] = cast(e.target[prop]); update(); });
+  $('#topBar').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { S.topBar = b.dataset.bar; update(); }));
   $('#motion').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
     const fps = Number(b.dataset.fps);
     S.animated = fps > 0;
@@ -1168,6 +1173,7 @@ function syncPanel() {
   drawWidgetRows();
   mark('#styles', (b) => b.dataset.style === S.clockStyle);
   mark('#quoteModes', (b) => b.dataset.mode === S.quote);
+  mark('#topBar', (b) => b.dataset.bar === S.topBar);
   mark('#motion', (b) => Number(b.dataset.fps) === (S.animated ? S.fps : 0));
   $('#liquid').checked = S.liquid;
   $('#solid').checked = S.solidGlass;

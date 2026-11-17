@@ -9,7 +9,11 @@ document.getElementById('openTab').addEventListener('click', () => {
 });
 
 const theme = document.getElementById('getTheme');
-if (THEME_STORE_URL) theme.href = THEME_STORE_URL;
+if (THEME_STORE_URL) {
+  theme.href = THEME_STORE_URL;
+  // The new tab page then fades into the theme's color instead of Chrome's own.
+  theme.addEventListener('click', () => { if (hasChrome) chrome.storage.sync.set({ topBar: 'theme' }); });
+}
 else {
   theme.textContent = 'Theme coming soon';
   theme.setAttribute('aria-disabled', 'true');
