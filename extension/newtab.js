@@ -152,7 +152,7 @@ const DEFAULTS = {
   wallpaper: 'aurora', wallpaperLight: 'mist', animated: true, fps: 60,
   blur: 18, tint: 10, liquid: true, solidGlass: false,
   clockStyle: 'clear', clockFont: 'tall', clockSize: 140, clockColor: 'white', clockColorLight: 'ink', hour24: false,
-  name: '',
+  name: '', greeting: true, greetingSize: 22,
   quote: 'caption', // 'off' | 'caption' | 'widget'
   layout: [{ k: 'weather', size: 'S' }, { k: 'todo', size: 'M' }, { k: 'sites', size: 'M' }],
   city: '', units: 'c', useLocation: false, coords: null,
@@ -257,7 +257,7 @@ function varsFor(m) {
     '--base': p.base, '--c1': p.c[0], '--c2': p.c[1], '--c3': p.c[2],
     '--wave': p.tones ? waveURL(p.tones) : 'none', '--blob-display': p.tones ? 'none' : 'block',
     '--blur': `${S.blur}px`, '--tint': String(S.tint / 100),
-    '--clock-font': f.stack, '--clock-weight': String(weight), '--clock-size': `${S.clockSize}px`,
+    '--clock-font': f.stack, '--clock-weight': String(weight), '--clock-size': `${S.clockSize}px`, '--greeting-size': `${S.greetingSize}px`,
     '--clock-rgb': (set.colors[S[set.colorKey]] || Object.values(set.colors)[0]).rgb,
   };
 }
@@ -352,7 +352,7 @@ function updateClock() {
   if (!S.hour24) hr = hr % 12 || 12;
   $('#clock').textContent = `${hr}:${String(d.getMinutes()).padStart(2, '0')}`;
   $('#date').textContent = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-  $('#greeting').textContent = S.name ? `Good ${part}, ${S.name}` : '';
+  $('#greeting').textContent = S.greeting ? `Good ${part}${S.name ? `, ${S.name}` : ''}` : '';
   const [text, who] = todaysQuote();
   $('#quoteCaption').textContent = S.quote === 'caption' ? `"${text}" — ${who}` : '';
 }
@@ -725,6 +725,8 @@ function buildPanel() {
   bind('#blur', 'blur', 'value', Number);
   bind('#tint', 'tint', 'value', Number);
   bind('#size', 'clockSize', 'value', Number);
+  bind('#greetingOn', 'greeting', 'checked');
+  bind('#greetingSize', 'greetingSize', 'value', Number);
   bind('#name', 'name', 'value', (v) => v.trim());
   $('#city').addEventListener('change', (e) => { S.city = e.target.value.trim(); S.useLocation = false; update(); renderWidgets(); });
   $('#units').addEventListener('change', (e) => { S.units = e.target.value; update(); renderWidgets(); });
@@ -781,6 +783,8 @@ function syncPanel() {
   $('#blur').value = S.blur;
   $('#tint').value = S.tint;
   $('#size').value = S.clockSize;
+  $('#greetingOn').checked = S.greeting;
+  $('#greetingSize').value = S.greetingSize;
   if (document.activeElement !== $('#name')) $('#name').value = S.name;
   $('#city').value = S.city;
   $('#units').value = S.units;

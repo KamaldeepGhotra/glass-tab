@@ -93,7 +93,7 @@ html { background: var(--base); }
 
 /* Layout */
 main { height: 100%; display: flex; flex-direction: column; align-items: center; padding-top: 10vh; overflow: auto; }
-#greeting { font-size: 22px; font-weight: 500; opacity: .9; margin-bottom: 2px; }
+#greeting { font-size: var(--greeting-size, 22px); font-weight: 500; opacity: .9; margin-bottom: 2px; }
 #greeting:empty { display: none; }
 #date { font-size: 18px; font-weight: 500; opacity: .8; }
 
