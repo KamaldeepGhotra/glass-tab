@@ -331,3 +331,18 @@ main { height: 100%; display: flex; flex-direction: column; align-items: center;
 #footerTip[hidden] { display: none; }
 #footerTip .chip { flex: none; }
 @keyframes tipIn { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* First-run tour: everything dims except the part being explained */
+#tour { position: fixed; inset: 0; z-index: 30; }
+#tour[hidden] { display: none; }
+#tourRing { position: fixed; box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .5), 0 0 0 2px rgba(255, 255, 255, .5); transition: all .4s cubic-bezier(.3, .8, .3, 1); pointer-events: none; }
+.light #tourRing { box-shadow: 0 0 0 200vmax rgba(20, 24, 40, .35), 0 0 0 2px rgba(255, 255, 255, .9); }
+#tourCard { position: fixed; border-radius: 22px; padding: 16px 18px 14px; transition: top .4s cubic-bezier(.3, .8, .3, 1), left .4s cubic-bezier(.3, .8, .3, 1); animation: cardIn .4s ease-out both; }
+@keyframes cardIn { from { opacity: 0; transform: translateY(8px); } }
+#tourCard h2 { margin: 4px 0 6px; font-size: 18px; font-weight: 600; }
+#tourCard p { margin: 0 0 14px; font-size: 14px; line-height: 1.45; opacity: .9; }
+.tour-btns { display: flex; align-items: center; gap: 8px; }
+.tour-btns .linkish { margin-left: 0; margin-right: auto; }
+.tour-btns #tourBack { margin-left: auto; }
+.tour-btns .chip.primary { background: var(--on-bg); color: var(--on-fg); border-color: transparent; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { #tourRing, #tourCard { transition: none; animation: none; } }

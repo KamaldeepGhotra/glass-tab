@@ -1223,15 +1223,89 @@ tick();
   });
 })();
 
+// ---------- first-run tour ----------
+// A short walk-through on the first new tab: each step lights up one part of the page
+// with a glass card beside it. Shown once; "Take the tour" in Customize replays it.
+const SHORTCUT = /Mac/i.test(navigator.platform) ? '⌘⇧K' : 'Ctrl+Shift+K';
+const TOUR = [
+  { title: 'Welcome to Glass Tab', text: 'A quick look around. It takes about 30 seconds.', next: 'Show me' },
+  { el: '#search', title: 'Search', text: `Search Google or type a website here. On any other site, press ${SHORTCUT} to bring up the same glass search bar.` },
+  { el: '#clock', title: 'Your clock', text: 'Give it clear or frosted glass, and pick its font, color and size in Customize. The greeting and quote can be changed or turned off there too.' },
+  { el: '#widgets', title: 'Widgets', text: 'Press and hold any widget to move it. While editing, the S, M and L buttons change its size and × removes it.' },
+  { el: '#gear', title: 'Customize', text: 'Wallpapers, light or dark, motion, glass, widgets, your calendar and weather all live here. You can also make your Google searches glass.' },
+  { title: "You're all set", text: 'Make it yours. You can take this tour again any time from Customize.', next: 'Done' },
+];
+let tourStep = -1;
+function startTour() {
+  $('#panel').hidden = true;
+  $('#gear').setAttribute('aria-expanded', 'false');
+  setEditing(false);
+  $('#footerTip').hidden = true;
+  $('#tour').hidden = false;
+  showTourStep(0);
+}
+function endTour() {
+  $('#tour').hidden = true;
+  tourStep = -1;
+  try { localStorage.setItem('glassTabTour', '1'); } catch {}
+  showFooterTip();
+}
+function showTourStep(i) {
+  tourStep = i;
+  const step = TOUR[i], ring = $('#tourRing'), card = $('#tourCard');
+  const target = step.el && $(step.el);
+  target?.scrollIntoView({ block: 'nearest' });
+  const box = target && target.offsetHeight ? target.getBoundingClientRect() : null;
+  const pad = 10;
+  if (box) {
+    const r = parseFloat(getComputedStyle(target).borderRadius) || 16;
+    Object.assign(ring.style, { left: `${box.left - pad}px`, top: `${box.top - pad}px`, width: `${box.width + pad * 2}px`, height: `${box.height + pad * 2}px`, borderRadius: `${r + pad}px` });
+  } else {
+    Object.assign(ring.style, { left: '50%', top: '45%', width: '0px', height: '0px', borderRadius: '50%' });
+  }
+  $('#tourCount').textContent = `${i + 1} of ${TOUR.length}`;
+  $('#tourTitle').textContent = step.title;
+  $('#tourText').textContent = step.text;
+  $('#tourNext').textContent = step.next || 'Next';
+  $('#tourBack').hidden = i === 0;
+  $('#tourSkip').hidden = i === TOUR.length - 1;
+  // Card goes below the lit-up part if there's room, otherwise above; centered otherwise.
+  const w = Math.min(340, innerWidth - 32);
+  card.style.width = `${w}px`;
+  const h = card.offsetHeight;
+  let left = innerWidth / 2 - w / 2, top = innerHeight * 0.45 - h / 2;
+  if (box) {
+    left = Math.min(innerWidth - w - 16, Math.max(16, box.left + box.width / 2 - w / 2));
+    top = box.bottom + pad + 14 + h < innerHeight ? box.bottom + pad + 14 : box.top - pad - 14 - h;
+    top = Math.max(16, top);
+  }
+  Object.assign(card.style, { left: `${left}px`, top: `${top}px` });
+  $('#tourNext').focus({ preventScroll: true });
+}
+$('#tourNext').addEventListener('click', () => (tourStep < TOUR.length - 1 ? showTourStep(tourStep + 1) : endTour()));
+$('#tourBack').addEventListener('click', () => showTourStep(Math.max(0, tourStep - 1)));
+$('#tourSkip').addEventListener('click', endTour);
+$('#replayTour').addEventListener('click', startTour);
+addEventListener('resize', () => { if (tourStep >= 0) showTourStep(tourStep); });
+document.addEventListener('keydown', (e) => {
+  if (tourStep < 0) return;
+  if (e.key === 'Escape') endTour();
+  if (e.key === 'ArrowRight') $('#tourNext').click();
+  if (e.key === 'ArrowLeft' && tourStep > 0) showTourStep(tourStep - 1);
+}, true);
+
 // ---------- footer hint ----------
 // Chrome adds its own footer to extension new tab pages. Show a one-time hint on
-// how to hide it; "Got it" dismisses it for good.
+// how to hide it (after the tour); "Got it" dismisses it for good.
+function showFooterTip() {
+  try { if (!localStorage.getItem('glassTabFooterTip')) $('#footerTip').hidden = false; } catch {}
+}
+$('#footerTipClose').addEventListener('click', () => {
+  $('#footerTip').hidden = true;
+  try { localStorage.setItem('glassTabFooterTip', '1'); } catch {}
+});
 try {
-  if (!localStorage.getItem('glassTabFooterTip')) {
-    $('#footerTip').hidden = false;
-    $('#footerTipClose').addEventListener('click', () => {
-      $('#footerTip').hidden = true;
-      try { localStorage.setItem('glassTabFooterTip', '1'); } catch {}
-    });
-  }
+  // Wait a moment so the widgets have drawn before the tour measures them.
+  if (!localStorage.getItem('glassTabTour')) setTimeout(startTour, 600);
+  else showFooterTip();
 } catch {}

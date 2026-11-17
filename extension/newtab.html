@@ -37,6 +37,20 @@
     <button id="footerTipClose" class="chip">Got it</button>
   </div>
 
+  <div id="tour" hidden role="dialog" aria-modal="true" aria-labelledby="tourTitle">
+    <div id="tourRing"></div>
+    <div id="tourCard" class="glass">
+      <div id="tourCount" class="muted"></div>
+      <h2 id="tourTitle"></h2>
+      <p id="tourText"></p>
+      <div class="tour-btns">
+        <button id="tourSkip" class="linkish">Skip</button>
+        <button id="tourBack" class="chip">Back</button>
+        <button id="tourNext" class="chip primary"></button>
+      </div>
+    </div>
+  </div>
+
   <button id="gear" class="glass" aria-label="Customize" aria-expanded="false">
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
   </button>
@@ -126,6 +140,7 @@
     </section>
 
     <section>
+      <button id="replayTour" class="chip wide">Take the tour</button>
       <a id="guide" href="welcome.html" class="muted">Setup guide</a>
     </section>
   </aside>
