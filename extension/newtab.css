@@ -61,8 +61,8 @@ html, body {
 
 /* Background. Only html gets a color: a body background would paint over #bg. */
 html { background: var(--base); }
-#bg { position: fixed; inset: -10vmax; background: var(--base); z-index: -2; }
-.blob { position: absolute; border-radius: 50%; filter: blur(60px); opacity: .85; transition: background .8s; }
+#bg { position: fixed; inset: -10vmax; background: var(--wave, none) center / cover no-repeat, var(--base); z-index: -2; }
+.blob { display: var(--blob-display, block); position: absolute; border-radius: 50%; filter: blur(60px); opacity: .85; transition: background .8s; }
 .light .blob { opacity: .9; }
 .b1 { left: -5%; top: -10%; width: 55vmax; height: 55vmax; background: var(--c1); }
 .b2 { left: 50%; top: 40%; width: 60vmax; height: 60vmax; background: var(--c2); }

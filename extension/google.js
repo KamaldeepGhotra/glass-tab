@@ -17,6 +17,9 @@
       root.style.setProperty('--gt-c1', p.c[0]);
       root.style.setProperty('--gt-c2', p.c[1]);
       root.style.setProperty('--gt-c3', p.c[2]);
+      if (p.wave) root.style.setProperty('--gt-wave', p.wave);
+      else root.style.removeProperty('--gt-wave');
+      root.classList.toggle('gt-wavy', !!p.wave);
     }
   }
   if (look) {
@@ -50,7 +53,10 @@
     // becomes see-through so the wallpaper shows.
     for (const el of document.querySelectorAll('body *')) {
       if (el.matches('.gt-box, .gt-card, .gt-clear, .gt-nofade, img, svg, svg *')) continue;
+      // Pop-ups (menus, dialogs, image previews) float over the page and must stay solid.
+      if (el.closest(POPUPS)) continue;
       const cs = getComputedStyle(el);
+      if (cs.position === 'fixed' || cs.position === 'absolute') continue;
       if (cs.backgroundColor === pageBg && el.offsetWidth >= innerWidth * 0.4) el.classList.add('gt-clear');
       if (cs.backgroundImage.includes(pageBg)) el.classList.add('gt-nofade');
     }
@@ -59,6 +65,24 @@
       const card = h.closest('#rso > *') || h.closest('[data-hveid]');
       if (card && card.offsetHeight > 40) card.classList.add('gt-card');
     }
+  }
+
+  // The suggestions list covers the results below it. Glass can't blur that far (it sits
+  // inside the frosted header), so whatever surface the list is drawn on turns almost
+  // solid while it's open: the search box itself, or a layer we had made see-through.
+  const POPUPS = '[role="dialog"], [role="menu"], [role="listbox"], [aria-modal="true"]';
+  function markOpen() {
+    document.querySelectorAll('.gt-pop').forEach((el) => el.classList.remove('gt-pop'));
+    let open = false;
+    for (const list of document.querySelectorAll('[role="listbox"]')) {
+      if (!list.offsetHeight) continue;
+      for (let el = list; el && el !== document.body; el = el.parentElement) {
+        if (el.classList.contains('gt-box')) { open = true; break; }
+        if (el.classList.contains('gt-clear')) { el.classList.add('gt-pop'); break; }
+        if (opaque(el)) break; // Google's own solid pop-up: already readable
+      }
+    }
+    root.classList.toggle('gt-open', open);
   }
 
   // Google's header only becomes fixed once you scroll, so this runs on scroll too.
@@ -81,9 +105,11 @@
     // Results load in pieces, so re-tag when the page changes (at most a few times a second).
     let timer = null;
     new MutationObserver(() => {
+      markOpen();
       if (timer) return;
       timer = setTimeout(() => { timer = null; mark(); }, 250);
     }).observe(document.body, { childList: true, subtree: true });
+    for (const type of ['focusin', 'focusout', 'input', 'keyup']) addEventListener(type, () => setTimeout(markOpen), true);
     let scrollTimer = null;
     addEventListener('scroll', () => {
       if (scrollTimer) return;

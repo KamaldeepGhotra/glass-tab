@@ -1,16 +1,26 @@
+// Layered wave wallpapers: each band is one tone. Tones go from the bottom-left band
+// to the top-right band, so the last tone sits next to the toolbar and is the base color.
+function waves(name, tones) {
+  return { name, tones, base: tones[tones.length - 1], c: [tones[1], tones[2], tones[3]] };
+}
+
 // Curated presets per mode, so every wallpaper blends into the toolbar.
 const PRESETS = {
+  tide:     waves('Tide',   ['#4b7bb0', '#3d6797', '#30547d', '#244264', '#19314c', '#112337', '#0b1726']),
+  velvet:   waves('Velvet', ['#e0488a', '#c23a76', '#9f2d61', '#7c214c', '#5a1738', '#3a0f25', '#200815']),
   aurora:   { name: 'Aurora',   base: '#05080d', c: ['#12a4b8', '#6a30d8', '#1db87f'] },
   midnight: { name: 'Midnight', base: '#04060d', c: ['#2350d8', '#0b6fc4', '#4a22a8'] },
-  rose:     { name: 'Rose',     base: '#0e060a', c: ['#e0438f', '#7d2a9a', '#ff7a9c'] },
+  rose:     { name: 'Rose',     base: '#12050b', c: ['#ff3d8b', '#b0125a', '#ff7ab6'] },
   sunset:   { name: 'Sunset',   base: '#0e0707', c: ['#ff6a3d', '#c4195e', '#ffad42'] },
   lagoon:   { name: 'Lagoon',   base: '#03090c', c: ['#00b6c9', '#0a5cff', '#00d39c'] },
   neon:     { name: 'Neon',     base: '#07050f', c: ['#ff2e93', '#6200ff', '#00d9ff'] },
   graphite: { name: 'Graphite', base: '#0a0a0c', c: ['#454955', '#25272d', '#666b78'] },
 };
 const LIGHT_PRESETS = {
+  lake:    waves('Lake',  ['#3f5f7f', '#557593', '#6b8ba8', '#86a3bd', '#a1bad1', '#bccfe2', '#d9e5f1']),
+  petal:   waves('Petal', ['#e97fab', '#ef96ba', '#f3acc9', '#f7c2d7', '#fad5e4', '#fce5ef', '#fef3f8']),
   mist:    { name: 'Mist',    base: '#edf1f9', c: ['#86aaff', '#c39bff', '#73d9e4'] },
-  blossom: { name: 'Blossom', base: '#fcf0f5', c: ['#ff8fbf', '#ffb3d1', '#ec9cff'] },
+  blossom: { name: 'Blossom', base: '#fdeef5', c: ['#ff8cc0', '#ffb0d4', '#ff9fc8'] },
   sorbet:  { name: 'Sorbet',  base: '#fdf2ec', c: ['#ff9470', '#ffc561', '#ff7aa5'] },
   coast:   { name: 'Coast',   base: '#eaf6f8', c: ['#4fd0df', '#74a3ff', '#76e6bb'] },
   citrus:  { name: 'Citrus',  base: '#f9f8ea', c: ['#ffd24f', '#9fe063', '#ffaa5e'] },
@@ -19,6 +29,32 @@ const LIGHT_PRESETS = {
 };
 // Wallpapers that were retired, mapped to the closest current one.
 const RETIRED = { ember: 'sunset', dusk: 'rose', forest: 'lagoon', dawn: 'sorbet', sky: 'coast', lilac: 'prism', sage: 'coast' };
+
+// Draws a wave wallpaper as an SVG data URL. Each band casts a soft shadow on the one
+// below it and has a faint light rim, like layered paper.
+const waveCache = {};
+function waveURL(tones) {
+  const key = tones.join();
+  if (waveCache[key]) return waveCache[key];
+  const n = tones.length, span = 1900 / n;
+  // On dark wallpapers shadows need to be deeper and rims fainter to read the same.
+  const dark = parseInt(tones[n - 1].slice(1, 3), 16) < 100;
+  const rim = dark ? '.09' : '.22', shade = dark ? '.6' : '.32';
+  let paths = `<rect x="-800" y="-900" width="3200" height="2800" fill="${tones[0]}"/>`;
+  for (let i = 1; i < n; i++) {
+    const y0 = 1450 - i * span, ph = i * 1.7;
+    const pts = [];
+    for (let x = -800; x <= 2400; x += 12) {
+      const y = y0 + 90 * Math.sin(x / 110 + ph) + 30 * Math.sin(x / 47 + ph * 2.3);
+      pts.push(`${x} ${y.toFixed(1)}`);
+    }
+    paths += `<path d="M-800 -900L${pts.join('L')}L2400 -900Z" fill="${tones[i]}" filter="url(#s)" stroke="rgba(255,255,255,${rim})" stroke-width="3"/>`;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">`
+    + `<defs><filter id="s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="-8" dy="16" stdDeviation="16" flood-color="#000" flood-opacity="${shade}"/></filter></defs>`
+    + `<g transform="rotate(30 800 500)">${paths}</g></svg>`;
+  return (waveCache[key] = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`);
+}
 
 // System fonts only, so nothing is downloaded. Mac fonts first, Windows fallbacks after.
 const SYSTEM = '"SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif';
@@ -200,6 +236,7 @@ function varsFor(m) {
   const weight = S.clockStyle !== 'solid' && f.weight < 400 ? 400 : f.weight;
   return {
     '--base': p.base, '--c1': p.c[0], '--c2': p.c[1], '--c3': p.c[2],
+    '--wave': p.tones ? waveURL(p.tones) : 'none', '--blob-display': p.tones ? 'none' : 'block',
     '--blur': `${S.blur}px`, '--tint': String(S.tint / 100),
     '--clock-font': f.stack, '--clock-weight': String(weight), '--clock-size': `${S.clockSize}px`,
     '--clock-rgb': (set.colors[S[set.colorKey]] || Object.values(set.colors)[0]).rgb,
@@ -219,7 +256,8 @@ function applyLook() {
   } catch {}
   // Shared with the Glass Google content script, which picks the mode Google is in.
   const pd = presetFor('dark'), pl = presetFor('light');
-  const look = { dark: { base: pd.base, c: pd.c }, light: { base: pl.base, c: pl.c }, blur: S.blur, tint: S.tint, solid: S.solidGlass };
+  const wave = (p) => (p.tones ? waveURL(p.tones) : null);
+  const look = { dark: { base: pd.base, c: pd.c, wave: wave(pd) }, light: { base: pl.base, c: pl.c, wave: wave(pl) }, blur: S.blur, tint: S.tint, solid: S.solidGlass };
   if (hasChrome && JSON.stringify(look) !== lastLook) { lastLook = JSON.stringify(look); chrome.storage.local.set({ look }); }
 }
 lightQuery.addEventListener('change', () => { if (S.appearance === 'auto') { applyLook(); syncPanel(); } });
@@ -646,7 +684,7 @@ function buildSwatches() {
   const set = modeSet(m);
   $('#swatches').replaceChildren(...Object.entries(set.presets).map(([key, p]) => h('button', {
     'data-key': key, title: p.name, 'aria-label': p.name,
-    style: `background: conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`,
+    style: p.tones ? `background: linear-gradient(135deg, ${p.tones.join(', ')})` : `background: conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`,
     onclick: () => { S[modeSet().wpKey] = key; update(); },
   })));
   $('#clockColors').replaceChildren(...Object.entries(set.colors).map(([key, c]) => h('button', {

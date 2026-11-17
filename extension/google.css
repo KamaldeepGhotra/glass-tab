@@ -10,7 +10,10 @@ html.glass-google {
   --gt-c3: #1e7f62;
   --gt-blur: 18px;
   --gt-tint: .1;
+  --gt-veil: transparent;
   background:
+    linear-gradient(var(--gt-veil), var(--gt-veil)),
+    var(--gt-wave, linear-gradient(transparent, transparent)) center / cover no-repeat,
     radial-gradient(60vmax 50vmax at 5% 0%, color-mix(in srgb, var(--gt-c1) 75%, transparent), transparent 70%),
     radial-gradient(60vmax 55vmax at 100% 90%, color-mix(in srgb, var(--gt-c2) 75%, transparent), transparent 70%),
     radial-gradient(40vmax 35vmax at 45% 15%, color-mix(in srgb, var(--gt-c3) 60%, transparent), transparent 70%),
@@ -39,6 +42,12 @@ html.glass-google .gt-box {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 8px 24px rgba(0, 0, 0, .25) !important;
 }
 
+/* Suggestions open: the box covers results below, so it turns almost solid to stay readable */
+html.glass-google.gt-open .gt-box,
+html.glass-google .gt-clear.gt-pop { background: color-mix(in srgb, var(--gt-base) 94%, #fff 6%) !important; }
+html.glass-google.gt-light.gt-open .gt-box,
+html.glass-google.gt-light .gt-clear.gt-pop { background: rgba(255, 255, 255, .97) !important; }
+
 /* Each result becomes a glass card */
 html.glass-google .gt-card {
   background: rgba(255, 255, 255, var(--gt-tint)) !important;
@@ -55,6 +64,9 @@ html.glass-google.gt-solid .gt-box,
 html.glass-google.gt-solid .gt-card { background: rgba(30, 32, 44, .94) !important; backdrop-filter: none; }
 
 /* Light mode: pastel wallpaper with milky glass, so Google's dark text stays readable */
+/* Wave wallpapers have bright, crisp bands, so they're dimmed behind Google's text. */
+html.glass-google.gt-wavy { --gt-veil: color-mix(in srgb, var(--gt-base) 55%, transparent); }
+html.glass-google.gt-wavy.gt-light { --gt-veil: rgba(255, 255, 255, .45); }
 html.glass-google.gt-light .gt-header { background: color-mix(in srgb, var(--gt-base) 55%, transparent) !important; }
 html.glass-google.gt-light .gt-box,
 html.glass-google.gt-light .gt-card {
