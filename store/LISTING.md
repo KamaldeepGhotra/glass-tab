@@ -1,20 +1,51 @@
-# Chrome Web Store listing: Glass Tab 1.0.3
+# Chrome Web Store: how to release a Glass Tab update
 
-Upload `store/glass-tab-1.0.3.zip`. Paste each section below into the matching place in the Developer Dashboard.
+Everything here follows the Developer Dashboard's left menu, top to bottom
+(**Package › Store listing › Privacy › Distribution**). Each heading is the name of a box
+in the dashboard, and the grey block under it is what goes in that box.
 
-## Store listing
+Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass Tab**.
 
-**Name:** Glass Tab
+---
 
-**Summary (132 characters max):**
-A liquid-glass new tab with a lock-screen clock, widgets and wallpapers, plus a glass search bar and glass Google results.
+## Release checklist (do this every update)
 
-**Category:** Productivity (or Customization & Themes if offered)
+1. **Raise the version** in `extension/manifest.json` (for example `1.0.3` → `1.0.4`). The store
+   rejects a package with the same version as the last one.
+2. **Build the zip**, from the `glass_Chrome_Extenstion` folder:
+   ```
+   V=$(python3 -c "import json;print(json.load(open('extension/manifest.json'))['version'])") && rm -f store/glass-tab-*.zip && (cd extension && zip -qr -X "../store/glass-tab-$V.zip" . -x '.*') && echo "Built store/glass-tab-$V.zip"
+   ```
+3. Dashboard › **Package** › **Upload new package** › choose the new zip.
+4. Only if something below changed: update **Store listing** and **Privacy**. Most updates
+   need neither. You need **Privacy** only when a permission is added.
+5. Click **Save draft**, then **Submit for review**. Leave **Publish automatically after it has passed review** ticked.
+6. Updates are usually reviewed in 1–3 days. Once approved, users get them automatically within a few hours.
 
-**Language:** English
+If the dashboard says it can't submit, click **Why can't I submit?** at the top. It lists the boxes that are empty.
 
-**Description:**
+**Current version:** 1.0.3, zip `store/glass-tab-1.0.3.zip`.
+**Since the last listing update:** the Description gained two lines (colors, Todoist), and Privacy
+gained the Todoist/Google/Microsoft permissions and Authentication information. Both are already
+written into the blocks below.
 
+---
+
+## 1. Package
+
+Click **Upload new package** and choose the zip. Nothing to type.
+
+Leave **Verified CRX uploads** off.
+
+---
+
+## 2. Store listing
+
+Title and Summary come from the package automatically.
+
+### Description
+
+```
 Glass Tab turns every new tab into a calm, liquid-glass home screen.
 
 A clock like your lock screen
@@ -38,52 +69,149 @@ Glass everywhere you search
 
 Private by design
 • No account, no ads, no tracking. Your settings and notes stay in Chrome.
+```
 
-**Screenshots (1280×800):** `1-hero-dark.png`, `2-light.png`, `3-customize.png`, `4-setup-tour.png`, `5-edit-layout.png`
+### Category
 
-**Small promo tile (440×280):** `promo-440x280.png`
+**Make Chrome Yours › Functionality and UI**
 
-## Privacy practices tab
+### Language
 
-**Single purpose:**
-Glass Tab gives Chrome's new tab page and searches a liquid-glass look: a customizable new tab with a clock and widgets, a matching glass search bar, and optional matching styling for Google search results.
+**English**
 
-**Permission justifications:**
-- **storage:** Saves the user's settings, to-dos, notes and layout, and caches weather and calendar data.
-- **topSites:** Shows the user's most visited sites in the Top sites widget.
-- **sessions:** Shows and reopens recently closed tabs in the Recently closed widget.
-- **search:** Sends searches typed in the new tab search box to the user's default search engine.
-- **favicon:** Shows site icons in the Top sites and Recently closed widgets.
-- **activeTab:** Adds the glass search bar to the current tab only when the user presses the shortcut or the toolbar button.
-- **scripting:** Inserts the glass search bar into the current tab on request, and registers the optional glass Google script after the user turns it on.
-- **tabs:** Lets the glass search bar find and switch to the user's open tabs by title, and detects Google search pages to offer the optional glass Google styling once.
-- **alarms:** Ends the Focus timer on time even when no new tab is open.
-- **notifications:** Tells the user when a Focus session has finished.
-- **Host permission api.open-meteo.com / geocoding-api.open-meteo.com:** Gets the weather for the city the user typed or their location.
-- **Host permission api.bigdatacloud.net:** Turns the user's location into a town name for the weather widget, only when they choose to use their location.
-- **Optional host permission www.google.com:** Only requested when the user turns on glass Google search results; restyles Google's results page.
-- **Optional host permission calendar.google.com / *.icloud.com:** Only requested when the user links a calendar; reads that calendar's iCal link.
-- **Optional host permission api.todoist.com:** Only requested when the user connects Todoist; reads and updates the tasks in the one Todoist project shown in the to-do widget.
-- **Optional permission identity, optional host permissions graph.microsoft.com / login.microsoftonline.com / tasks.googleapis.com:** Only requested when the user signs in to Microsoft To Do or Google Tasks from the to-do widget's settings; used to sign in through Chrome's sign-in window and to read and update the tasks in the list shown in the widget.
+### Graphic assets
 
-**Remote code:** No, I am not using remote code.
+| Box | File (in the `store` folder unless noted) |
+| --- | --- |
+| Store icon (128×128) | `extension/icons/icon128.png` |
+| Global promo video | leave empty |
+| Screenshots | `1-hero-dark.png`, `2-light.png`, `3-customize.png`, `4-setup-tour.png`, `5-edit-layout.png` |
+| Small promo tile (440×280) | `promo-440x280.png` |
+| Marquee promo tile | leave empty |
 
-**Data usage (tick these):**
-- Location: yes (approximate location, only when the user turns on "Use my location", to show local weather)
-- Web history: yes (top sites and recently closed tabs are shown on the new tab page only, never sent anywhere)
-- Authentication information: yes (the token for a to-do app the user chooses to connect; kept on the user's computer, used only to reach that app)
-- Personal communications / user activity / everything else: no
+### Additional fields
 
-Then tick all three certifications:
-- I do not sell or transfer user data to third parties, outside of the approved use cases.
-- I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
-- I do not use or transfer user data to determine creditworthiness or for lending purposes.
+| Box | Value |
+| --- | --- |
+| Official URL | leave empty |
+| Homepage URL | `https://github.com/KamaldeepGhotra/glass-tab` |
+| Support URL | `https://github.com/KamaldeepGhotra/glass-tab/issues` |
+| Mature content | off |
 
-**Privacy policy URL:** https://kamaldeepghotra.github.io/glass-tab/privacy.html
-(Works once the repo is public and GitHub Pages is on: repo Settings › Pages › Deploy from branch › main › /docs.)
+---
 
-## Distribution
+## 3. Privacy
 
-- Visibility: Public
-- Regions: All regions
-- Price: Free
+### Single purpose description
+
+```
+Glass Tab replaces Chrome's new tab page with a customizable liquid-glass home screen: a clock, wallpapers and widgets (weather, calendar, to-do list, notes and more), plus a matching glass search bar and optional matching styling for Google search results.
+```
+
+### Permission justification boxes
+
+The dashboard shows one box per permission, titled like **storage justification**. Paste the matching block into each. If a box isn't shown, skip it.
+
+**storage justification**
+```
+Saves the user's settings, to-do list, notes and widget layout, and keeps short-lived copies of their weather, calendar and to-do data so the new tab opens instantly.
+```
+
+**topSites justification**
+```
+Shows the user's most visited sites in the Top sites widget on the new tab page.
+```
+
+**sessions justification**
+```
+Shows recently closed tabs in the Recently closed widget and reopens one when the user clicks it.
+```
+
+**search justification**
+```
+Sends what the user types in the new tab search box to their default search engine.
+```
+
+**favicon justification**
+```
+Shows site icons next to the sites in the Top sites and Recently closed widgets.
+```
+
+**activeTab justification**
+```
+Adds the glass search bar to the tab the user is on, only when they press the keyboard shortcut or the toolbar button.
+```
+
+**scripting justification**
+```
+Inserts the glass search bar into the current tab when the user asks for it, and registers the optional glass Google styling after the user turns it on.
+```
+
+**tabs justification**
+```
+Lets the glass search bar find the user's open tabs by title and switch to one, and notices Google search pages so it can offer the optional glass Google styling once.
+```
+
+**alarms justification**
+```
+Ends the Focus timer at the right time even when no new tab is open.
+```
+
+**notifications justification**
+```
+Tells the user when a Focus timer session has finished.
+```
+
+**identity justification** (only if the dashboard shows this box)
+```
+Optional and only requested when the user chooses to sign in to Google Tasks or Microsoft To Do from the to-do widget's settings. Used to open Chrome's sign-in window for that service.
+```
+
+**Host permission justification** (one box for all sites)
+```
+api.open-meteo.com and geocoding-api.open-meteo.com: get the weather for the city the user typed or for their location.
+api.bigdatacloud.net: turns the user's location into a town name for the weather widget, only when they choose "Use my location".
+Optional, only requested when the user turns the feature on:
+www.google.com: restyles Google search results when the user turns on glass Google search.
+calendar.google.com and *.icloud.com: read the iCal link of the calendar the user links.
+api.todoist.com: read and update the tasks in the Todoist project the user picks for the to-do widget.
+tasks.googleapis.com, graph.microsoft.com and login.microsoftonline.com: sign in to and read and update the Google Tasks or Microsoft To Do list the user picks for the to-do widget.
+```
+
+### Are you using remote code?
+
+**No, I am not using remote code**
+
+### Data usage
+
+Tick only these three. Leave every other box unticked.
+
+| Box | Tick? | Why |
+| --- | --- | --- |
+| Personally identifiable information | no | |
+| Health information | no | |
+| Financial and payment information | no | |
+| **Authentication information** | **yes** | the token for a to-do app the user connects, kept on their computer |
+| Personal communications | no | |
+| **Location** | **yes** | approximate location for weather, only with "Use my location" |
+| **Web history** | **yes** | top sites and recently closed tabs, shown on the new tab only |
+| User activity | no | |
+| Website content | no | |
+
+Then tick all three **I certify** boxes underneath.
+
+### Privacy policy URL
+
+```
+https://kamaldeepghotra.github.io/glass-tab/privacy.html
+```
+
+---
+
+## 4. Distribution
+
+| Setting | Value |
+| --- | --- |
+| Visibility | Public |
+| Regions | All regions |
+| Pricing | Free |
