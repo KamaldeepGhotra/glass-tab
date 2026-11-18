@@ -31,6 +31,13 @@ html.glass-google .gt-nofade {
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 55%);
   mask-image: linear-gradient(to bottom, transparent, #000 55%);
 }
+/* Google's own colored fades (AI Overview "Show more") are repainted in the wallpaper
+   color, so they hide the collapsed text without leaving a box. google.js stretches the
+   one along a card's bottom to the card's edges. */
+html.glass-google .gt-card .gt-fade {
+  background-image: linear-gradient(transparent, color-mix(in srgb, var(--gt-base) 85%, transparent) 52px, var(--gt-base) 80px) !important;
+}
+html.glass-google .gt-fade-edge { border-radius: 0 0 22px 22px; }
 /* Sticky header keeps a frosted strip so text stays readable while scrolling */
 html.glass-google .gt-header { background: color-mix(in srgb, var(--gt-base) 40%, transparent) !important; backdrop-filter: blur(24px) saturate(160%); }
 

@@ -35,6 +35,7 @@
     return 0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2];
   };
   const opaque = (el) => lum(getComputedStyle(el).backgroundColor) !== null;
+  const FADE = /gradient\((to bottom, )?rgba\(\d+, \d+, \d+, 0\)/; // starts clear, ends in a color
 
   function mark() {
     // Search box: the outermost rounded, filled layer around the query field becomes
@@ -56,6 +57,21 @@
       // Pop-ups (menus, dialogs, image previews) float over the page and must stay solid.
       if (el.closest(POPUPS)) continue;
       const cs = getComputedStyle(el);
+      // "Show more" fades painted in one of Google's own surface colors (the AI Overview's
+      // is a blue-gray) show up as a box on the wallpaper. Turn that block into a glass
+      // card and repaint the fade in the wallpaper color.
+      if (FADE.test(cs.backgroundImage) && !cs.backgroundImage.includes(pageBg) && el.offsetWidth >= innerWidth * 0.3) {
+        // The outermost block around the fade that's still about the fade's own width.
+        let block = el.closest('[data-hveid]');
+        const w = block?.offsetWidth;
+        for (let b = block?.parentElement.closest('[data-hveid]'); b && b.offsetWidth <= w + 40; b = b.parentElement.closest('[data-hveid]')) block = b;
+        const card = block?.closest('.gt-card') || block;
+        if (card) {
+          card.classList.add('gt-card');
+          card.querySelectorAll('.gt-card').forEach((c) => c.classList.remove('gt-card'));
+          fitFade(el, cs, card);
+        }
+      }
       if (cs.position === 'fixed' || cs.position === 'absolute') continue;
       if (cs.backgroundColor === pageBg && el.offsetWidth >= innerWidth * 0.4) el.classList.add('gt-clear');
       if (cs.backgroundImage.includes(pageBg)) el.classList.add('gt-nofade');
@@ -63,8 +79,23 @@
     // Each search result: the top-level block around a result title.
     for (const h of document.querySelectorAll('#rso h3, #search h3')) {
       const card = h.closest('#rso > *') || h.closest('[data-hveid]');
-      if (card && card.offsetHeight > 40) card.classList.add('gt-card');
+      if (card && card.offsetHeight > 40 && !card.parentElement.closest('.gt-card')) card.classList.add('gt-card');
     }
+  }
+
+  // A fade along the bottom of a card is stretched to the card's edges, so the
+  // wallpaper-colored fade doesn't leave a strip of a different color beside it.
+  function fitFade(el, cs, card) {
+    el.classList.add('gt-fade');
+    const r = el.getBoundingClientRect();
+    const c = card.getBoundingClientRect();
+    const [left, right, bottom] = [cs.left, cs.right, cs.bottom].map(parseFloat);
+    if (Math.abs(c.bottom - r.bottom) > 40 || [left, right, bottom].some(Number.isNaN)) return;
+    el.style.setProperty('left', `${left - (r.left - c.left)}px`, 'important');
+    el.style.setProperty('right', `${right - (c.right - r.right)}px`, 'important');
+    el.style.setProperty('bottom', `${bottom - (c.bottom - r.bottom)}px`, 'important');
+    el.style.setProperty('width', 'auto', 'important');
+    el.classList.add('gt-fade-edge');
   }
 
   // The suggestions list covers the results below it. Glass can't blur that far (it sits
