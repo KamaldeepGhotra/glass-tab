@@ -1,2 +1,5 @@
 .DS_Store
 Cached Theme.pak
+store/*.zip
+store/*.png
+store/*.jpg
