@@ -59,21 +59,22 @@
   <aside id="panel" hidden aria-label="Customize">
     <h2>Customize</h2>
 
-    <section>
-      <h3>Appearance</h3>
+    <!-- One group open at a time; each closed row shows what's set. -->
+    <details class="group" data-group="wallpaper">
+      <summary><span>Wallpaper</span><span class="sum" id="sumWallpaper"></span></summary>
+      <h3>Light or dark</h3>
       <div id="appearance" class="chips">
         <button data-mode="auto">Auto</button>
         <button data-mode="light">Light</button>
         <button data-mode="dark">Dark</button>
       </div>
-      <h3 class="sub">Wallpaper</h3>
+      <h3 class="sub" id="wallpaperTitle">Wallpaper</h3>
       <div id="swatches" class="swatches"></div>
-      <h3 class="sub">Top bar</h3>
-      <div id="topBar" class="chips">
-        <button data-bar="chrome">Chrome's own</button>
-        <button data-bar="theme">Glass Tab theme</button>
-      </div>
-      <p class="note">Blends the page into Chrome's top bar. Pick Glass Tab theme only if you installed one of the Glass Tab toolbar themes.</p>
+      <details class="help colors-box">
+        <summary>Change this wallpaper's colors</summary>
+        <div id="wpColors" class="wp-colors"></div>
+        <button id="wpReset" class="linkish">Back to the original colors</button>
+      </details>
       <h3 class="sub">Motion</h3>
       <div id="motion" class="chips">
         <button data-fps="0">Still</button>
@@ -82,48 +83,81 @@
         <button data-fps="60">60 fps</button>
         <button data-fps="120">120 fps</button>
       </div>
-    </section>
+    </details>
 
-    <section>
-      <h3>Glass</h3>
+    <details class="group" data-group="glass">
+      <summary><span>Glass</span><span class="sum" id="sumGlass"></span></summary>
       <label class="slider">Clarity <input type="range" id="blur" min="2" max="30" step="1"></label>
       <label class="slider">Tint <input type="range" id="tint" min="4" max="24" step="1"></label>
       <label class="toggle"><input type="checkbox" id="liquid"> Liquid refraction</label>
       <label class="toggle"><input type="checkbox" id="solid"> Reduce transparency</label>
-      <label class="toggle"><input type="checkbox" id="glassGoogle"> Glass Google search results</label>
-      <p class="note" id="googleNote">Works on google.com in light and dark mode. Chrome will ask to let Glass Tab change google.com. Reload Google after turning it on.</p>
-    </section>
+    </details>
 
-    <section>
-      <h3>Clock</h3>
+    <details class="group" data-group="clock">
+      <summary><span>Clock</span><span class="sum" id="sumClock"></span></summary>
       <div id="styles" class="chips">
         <button data-style="solid">Solid</button>
         <button data-style="clear">Clear glass</button>
         <button data-style="frost">Frosted glass</button>
       </div>
+      <h3 class="sub">Font</h3>
       <div id="fonts" class="chips"></div>
+      <h3 class="sub">Color</h3>
       <div id="clockColors" class="swatches small"></div>
       <label class="slider">Size <input type="range" id="size" min="64" max="200" step="2"></label>
       <label class="toggle"><input type="checkbox" id="hour24"> 24-hour time</label>
-      <label class="toggle"><input type="checkbox" id="greetingOn"> Show greeting</label>
-      <label class="slider">Greeting size <input type="range" id="greetingSize" min="14" max="48" step="1"></label>
-      <label class="field">Greeting name <input id="name" placeholder="Your name" maxlength="30"></label>
-    </section>
+    </details>
 
-    <section>
-      <h3>Widgets</h3>
-      <div id="widgetRows"></div>
-      <button id="editLayout" class="chip wide">Edit layout</button>
+    <details class="group" data-group="greeting">
+      <summary><span>Greeting and quote</span><span class="sum" id="sumGreeting"></span></summary>
+      <label class="toggle"><input type="checkbox" id="greetingOn"> Show greeting</label>
+      <label class="field">Your name <input id="name" placeholder="Optional" maxlength="30"></label>
+      <label class="slider">Greeting size <input type="range" id="greetingSize" min="14" max="48" step="1"></label>
       <h3 class="sub">Quote</h3>
       <div id="quoteModes" class="chips">
         <button data-mode="off">Off</button>
         <button data-mode="caption">Under the clock</button>
         <button data-mode="widget">As a widget</button>
       </div>
-    </section>
+    </details>
 
-    <section>
-      <h3>Calendar</h3>
+    <details class="group" data-group="widgets">
+      <summary><span>Widgets</span><span class="sum" id="sumWidgets"></span></summary>
+      <div id="widgetRows"></div>
+      <div class="row two">
+        <button id="tidyLayout" class="chip">Tidy up</button>
+        <button id="editLayout" class="chip">Move and resize</button>
+      </div>
+      <p class="note">Tidy up lines your widgets up in neat blocks.</p>
+    </details>
+
+    <details class="group" data-group="todo">
+      <summary><span>To-do list</span><span class="sum" id="sumTodo"></span></summary>
+      <p class="note">Keep your tasks here, or show a list from an app you already use. Ticking, editing and adding tasks updates that app too.</p>
+      <div id="todoSource" class="chips" tabindex="-1">
+        <button data-src="local">On this computer</button>
+        <button data-src="todoist">Todoist</button>
+        <button data-src="microsoft">Microsoft To Do</button>
+        <button data-src="google">Google Tasks</button>
+      </div>
+      <div id="syncSetup" hidden>
+        <div id="todoistSetup" hidden>
+          <label class="field">API token <input id="todoistToken" type="password" placeholder="Paste it here" autocomplete="off" spellcheck="false"></label>
+          <details class="help"><summary>Where do I find it?</summary>
+            <p>In Todoist, open <b>Settings › Integrations › Developer</b> and copy your <b>API token</b>. It stays on this computer.</p>
+          </details>
+        </div>
+        <button id="syncConnect" class="chip wide"></button>
+      </div>
+      <div id="syncConnected" hidden>
+        <label class="field">List <select id="syncList"></select></label>
+        <button id="syncDisconnect" class="linkish">Disconnect and use the list on this computer</button>
+      </div>
+      <p class="note" id="syncNote" aria-live="polite"></p>
+    </details>
+
+    <details class="group" data-group="calendar">
+      <summary><span>Calendar</span><span class="sum" id="sumCalendar"></span></summary>
       <textarea id="calLinks" rows="2" placeholder="Paste your calendar's iCal link" aria-label="Calendar links, one per line"></textarea>
       <button id="calSave" class="chip wide">Link calendar</button>
       <p class="note" id="calNote"></p>
@@ -134,10 +168,10 @@
         <p>Add more than one calendar by putting each link on its own line. Links stay on this computer.</p>
         <p>The widget checks for changes every 15 minutes, so a new event can take a few minutes to appear.</p>
       </details>
-    </section>
+    </details>
 
-    <section>
-      <h3>Weather</h3>
+    <details class="group" data-group="weather">
+      <summary><span>Weather</span><span class="sum" id="sumWeather"></span></summary>
       <label class="field">City <input id="city" placeholder="London, ON" maxlength="60"></label>
       <button id="useLocation" class="chip wide">Use my location</button>
       <p class="note" id="locNote" aria-live="polite"></p>
@@ -145,9 +179,23 @@
         <select id="units"><option value="c">°C</option><option value="f">°F</option></select>
       </label>
       <p class="note credit">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0). Town names by <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a>.</p>
-    </section>
+    </details>
 
-    <section>
+    <details class="group" data-group="chrome">
+      <summary><span>Chrome and Google</span><span class="sum" id="sumChrome"></span></summary>
+      <label class="toggle"><input type="checkbox" id="glassGoogle"> Glass Google search results</label>
+      <p class="note" id="googleNote">Works on google.com in light and dark mode. Chrome will ask to let Glass Tab change google.com. Reload Google after turning it on.</p>
+      <h3 class="sub">Top bar</h3>
+      <div id="topBar" class="chips">
+        <button data-bar="chrome">Chrome's own</button>
+        <button data-bar="theme">Glass Tab theme</button>
+      </div>
+      <p class="note">Blends the page into Chrome's top bar. Pick Glass Tab theme only if you installed one of the Glass Tab toolbar themes.</p>
+      <h3 class="sub">Chrome's footer</h3>
+      <p class="note">Chrome adds a bar along the bottom of extension new tabs. To hide it, right-click that bar and choose <b>Hide footer on New Tab page</b>.</p>
+    </details>
+
+    <section class="panel-end">
       <button id="replayTour" class="chip wide">Take the tour</button>
       <a id="guide" href="welcome.html" class="muted">Setup guide</a> · <a href="https://kamaldeepghotra.github.io/glass-tab/privacy.html" target="_blank" rel="noopener" class="muted">Privacy</a>
     </section>

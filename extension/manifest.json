@@ -29,7 +29,11 @@
     }
   },
   "permissions": ["storage", "topSites", "sessions", "search", "favicon", "activeTab", "scripting", "tabs", "alarms", "notifications"],
-  "optional_host_permissions": ["https://www.google.com/*", "https://calendar.google.com/*", "https://*.icloud.com/*"],
+  "optional_permissions": ["identity"],
+  "optional_host_permissions": [
+    "https://www.google.com/*", "https://calendar.google.com/*", "https://*.icloud.com/*",
+    "https://api.todoist.com/*", "https://graph.microsoft.com/*", "https://login.microsoftonline.com/*", "https://tasks.googleapis.com/*"
+  ],
   "host_permissions": [
     "https://api.open-meteo.com/*",
     "https://geocoding-api.open-meteo.com/*",

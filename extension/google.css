@@ -38,6 +38,8 @@ html.glass-google .gt-card .gt-fade {
   background-image: linear-gradient(transparent, color-mix(in srgb, var(--gt-base) 85%, transparent) 52px, var(--gt-base) 80px) !important;
 }
 html.glass-google .gt-fade-edge { border-radius: 0 0 22px 22px; }
+html.glass-google .gt-card.gt-card.gt-has-fade { background-image: linear-gradient(to top, var(--gt-base) var(--gt-fade-gap, 0px), transparent var(--gt-fade-gap, 0px)) !important; }
+html.glass-google .gt-noline { border-color: transparent !important; background-color: transparent !important; }
 /* Sticky header keeps a frosted strip so text stays readable while scrolling */
 html.glass-google .gt-header { background: color-mix(in srgb, var(--gt-base) 40%, transparent) !important; backdrop-filter: blur(24px) saturate(160%); }
 

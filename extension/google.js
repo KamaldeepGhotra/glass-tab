@@ -50,6 +50,7 @@
       el.classList.toggle('gt-clear', i < rounded.length - 1);
     });
     markHeader();
+    unfitCards();
     // Anything painted in Google's page color (wrappers, bars, "Show more" fades)
     // becomes see-through so the wallpaper shows.
     for (const el of document.querySelectorAll('body *')) {
@@ -74,7 +75,10 @@
         }
       }
       if (cs.position === 'fixed' || cs.position === 'absolute') continue;
-      if (cs.backgroundColor === pageBg && el.offsetWidth >= innerWidth * 0.4) el.classList.add('gt-clear');
+      // Wide layers in the page color go, so the wallpaper shows. Inside a glass card,
+      // "wide" means half the card (like the strip behind the AI Overview's "Show more"),
+      // so small buttons keep their own color.
+      if (cs.backgroundColor === pageBg && (el.offsetWidth >= innerWidth * 0.4 || el.offsetWidth >= (el.closest('.gt-card')?.offsetWidth ?? Infinity) * 0.5)) el.classList.add('gt-clear');
       if (cs.backgroundImage.includes(pageBg)) el.classList.add('gt-nofade');
     }
     // Each search result: the top-level block around a result title.
@@ -100,6 +104,27 @@
     if (Number.isNaN(bottom) || gap < 0 || gap > 120) return;
     el.style.setProperty('bottom', `${bottom - gap}px`, 'important');
     el.classList.add('gt-fade-edge');
+    // Google's box around the fade can cut it off above the card's bottom. The card paints
+    // that last strip in the fade's color, and a divider line along it is hidden, so the
+    // fade runs right to the card's edge.
+    let seen = r.bottom;
+    for (let p = el.parentElement; p && p !== card; p = p.parentElement) {
+      if (getComputedStyle(p).overflowY !== 'visible') seen = Math.min(seen, p.getBoundingClientRect().bottom);
+    }
+    card.classList.add('gt-has-fade');
+    card.style.setProperty('--gt-fade-gap', `${Math.max(0, Math.round(c.bottom - seen))}px`);
+    for (const line of card.querySelectorAll('*')) {
+      const b = line.getBoundingClientRect();
+      if (b.height <= 2 && b.width > c.width / 2 && b.bottom >= seen - 2 && b.top <= c.bottom) line.classList.add('gt-noline');
+    }
+  }
+  // Once a card is expanded its fade is gone, so the strip and the hidden lines go too.
+  function unfitCards() {
+    for (const card of document.querySelectorAll('.gt-has-fade')) {
+      if ([...card.querySelectorAll('.gt-fade-edge')].some((f) => f.offsetHeight)) continue;
+      card.classList.remove('gt-has-fade');
+      card.querySelectorAll('.gt-noline').forEach((l) => l.classList.remove('gt-noline'));
+    }
   }
 
   // The suggestions list covers the results below it. Glass can't blur that far (it sits

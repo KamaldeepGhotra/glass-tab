@@ -58,6 +58,9 @@ function waveParts(tones) {
 function waveURL(tones) {
   const key = tones.join();
   if (waveCache[key]) return waveCache[key];
+  // Dragging a color picker makes a new picture per step; keep only recent ones.
+  const keys = Object.keys(waveCache);
+  if (keys.length > 12) delete waveCache[keys[0]];
   const { bands, svg } = waveParts(tones);
   return (waveCache[key] = `url("data:image/svg+xml,${encodeURIComponent(svg(bands.join('')))}")`);
 }
@@ -115,12 +118,48 @@ const LIGHT_CLOCK_COLORS = {
 //   Weather  S now · M + 3 days · L + details, hourly and 5 days
 //   To-do    S a short list · M a few tasks · L most lists · XL long lists
 //   Focus    S timer only · M + length controls and today's count
-//   Top sites S 4 icons · M 4 with names · L 8 with names
+//   Top sites S 4 icons · M 4 with names · L up to 12 with names
 //   Recent tabs and Quote: M and L (they need the width for text)
 //   Notes    S to XL, like the to-do list
 //   Countdown S days left · M + the date and hours
 //   Calendar S next event · M next few · L the coming week
 const SIZE_NAMES = { S: 'Small', M: 'Medium', L: 'Large', XL: 'Extra large' };
+
+// A tidy arrangement for a set of widgets. The grid is four columns and fills row by
+// row, so it's built from blocks with no holes: a Large (left half, two rows) with two
+// Mediums stacked beside it, two Larges side by side, or two Mediums in a row. List
+// widgets get the Large spots, everything else is Medium. Just enough Larges shrink to
+// Medium for every block (and the last row) to come out full.
+const TIDY_BIG = ['todo', 'calendar', 'notes'];
+const TIDY_ORDER = ['todo', 'weather', 'calendar', 'sites', 'notes', 'focus', 'countdown', 'recent', 'quote'];
+function tidyLayout(keys) {
+  const sorted = TIDY_ORDER.filter((k) => keys.includes(k));
+  let big = sorted.filter((k) => TIDY_BIG.includes(k));
+  const nSmall = sorted.length - big.length;
+  // d = how many Larges to shrink: the fewest that work, preferring a full last row.
+  const works = (d) => (big.length - d) % 2 === 0 || nSmall + d >= 2;
+  const options = [...Array(big.length + 1).keys()].filter(works);
+  const d = options.find((x) => (nSmall + x) % 2 === 0) ?? options[0];
+  big = big.slice(0, big.length - d);
+  const small = sorted.filter((k) => !big.includes(k));
+  const L = (k) => ({ k, size: 'L' }), M = (k) => ({ k, size: 'M' });
+  const out = [];
+  if (big.length % 2) out.push(L(big.shift()), M(small.shift()), M(small.shift()));
+  while (big.length) out.push(L(big.shift()), L(big.shift()));
+  out.push(...small.map(M));
+  return out;
+}
+// Turning a widget on or off: a layout that's still tidy stays tidy; one the user has
+// arranged by hand only gains (or loses) that widget.
+function setWidgetOn(k, on) {
+  const keys = S.layout.map((w) => w.k);
+  if (on === keys.includes(k)) return;
+  const tidy = JSON.stringify(S.layout) === JSON.stringify(tidyLayout(keys));
+  const next = on ? [...keys, k] : keys.filter((x) => x !== k);
+  if (tidy) S.layout = tidyLayout(next);
+  else if (on) S.layout.push({ k, size: WIDGETS[k].def });
+  else S.layout = S.layout.filter((w) => w.k !== k);
+}
 const WIDGETS = {
   weather: { name: 'Weather',     sizes: ['S', 'M', 'L'],       def: 'S' },
   todo:    { name: 'To-do',       sizes: ['S', 'M', 'L', 'XL'], def: 'L' },
@@ -170,9 +209,10 @@ const DEFAULTS = {
   clockStyle: 'clear', clockFont: 'tall', clockSize: 140, clockColor: 'white', clockColorLight: 'ink', hour24: false,
   name: '', greeting: true, greetingSize: 22,
   quote: 'caption', // 'off' | 'caption' | 'widget'
-  layout: [{ k: 'weather', size: 'S' }, { k: 'todo', size: 'L' }, { k: 'sites', size: 'M' }],
+  layout: [{ k: 'todo', size: 'L' }, { k: 'weather', size: 'M' }, { k: 'sites', size: 'M' }], // = tidyLayout of these three
   city: '', units: 'c', useLocation: false, coords: null, coordsName: '',
   todos: [], focusMinutes: 30, notes: '', countdown: { title: '', date: '' },
+  wpColors: {}, // wallpaper key -> { from, to } for waves, { base, c: [3] } for glows
 };
 
 const $ = (s) => document.querySelector(s);
@@ -260,9 +300,27 @@ function modeSet(m = mode()) {
     ? { presets: LIGHT_PRESETS, wpKey: 'wallpaperLight', colors: LIGHT_CLOCK_COLORS, colorKey: 'clockColorLight' }
     : { presets: PRESETS, wpKey: 'wallpaper', colors: CLOCK_COLORS, colorKey: 'clockColor' };
 }
-function presetFor(m) {
+// The saved wallpaper key for a mode (the first one if the saved key is unknown).
+function wallpaperKey(m) {
   const set = modeSet(m);
-  return set.presets[S[set.wpKey]] || Object.values(set.presets)[0];
+  return set.presets[S[set.wpKey]] ? S[set.wpKey] : Object.keys(set.presets)[0];
+}
+// Blends two colors into n tones, front to back, for a wave wallpaper.
+function ramp(from, to, n) {
+  const rgb = (x) => [1, 3, 5].map((i) => parseInt(x.slice(i, i + 2), 16));
+  const a = rgb(from), b = rgb(to);
+  return Array.from({ length: n }, (_, i) => `#${a.map((v, j) => Math.round(v + (b[j] - v) * i / (n - 1)).toString(16).padStart(2, '0')).join('')}`);
+}
+// A wallpaper with the user's own colors, if they changed them in Customize.
+function presetOf(m, key) {
+  const p = modeSet(m).presets[key], o = S.wpColors?.[key];
+  if (!o) return p;
+  if (p.tones && o.from && o.to) return waves(p.name, ramp(o.from, o.to, p.tones.length));
+  if (!p.tones && o.base && o.c?.length === 3) return { name: p.name, base: o.base, c: o.c };
+  return p;
+}
+function presetFor(m) {
+  return presetOf(m, wallpaperKey(m));
 }
 // The top of the page fades into Chrome's toolbar. Without a theme that's Chrome's
 // own charcoal or pale gray (switching with the system); with one of the Glass Tab
@@ -361,7 +419,8 @@ async function setGlassGoogle(on) {
   } catch (err) {
     $('#googleNote').textContent = `Couldn't turn this on: ${err.message}`;
   }
-  box.checked = await ggIsOn();
+  box.checked = googleOn = await ggIsOn();
+  syncPanel();
 }
 
 // ---------- clock ----------
@@ -542,15 +601,358 @@ function weatherWidget(size) {
 // Chrome's synced storage allows 8 KB per setting, so lists and notes are capped to fit.
 const TODO_MAX = 50, NOTES_MAX = 6000;
 
+// ---------- to-do sync ----------
+// Optional: the to-do widget can show a list from Todoist, Microsoft To Do or Google
+// Tasks instead of the list kept in Chrome. Sign-in details and the copy of the tasks
+// stay on this computer (chrome.storage.local); none of it goes into synced settings.
+// Changes show at once and are sent to the service in the background.
+//
+// Microsoft and Google sign in through Chrome's sign-in window (chrome.identity) with
+// Glass Tab's own app registration; their client IDs go in SYNC_CLIENT_IDS. A service
+// whose ID is empty isn't offered. See docs/todo-sync.md.
+const SYNC_CLIENT_IDS = { microsoft: '', google: '' };
+
+const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const randomString = () => b64url(crypto.getRandomValues(new Uint8Array(32)));
+const syncError = (status, msg) => Object.assign(new Error(msg || `The service answered ${status}`), { status });
+async function jsonFetch(url, { method = 'GET', body, form, token } = {}) {
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body) headers['Content-Type'] = 'application/json';
+  if (form) headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  const r = await fetch(url, { method, headers, body: form ? new URLSearchParams(form) : body ? JSON.stringify(body) : undefined });
+  if (!r.ok) throw syncError(r.status);
+  return r.status === 204 ? null : r.json().catch(() => null);
+}
+// Opens Chrome's sign-in window and returns the page it came back to.
+// Closing the window, or a quiet sign-in that needs the user, counts as "not signed in".
+async function webAuth(url, interactive) {
+  let back;
+  try { back = await chrome.identity.launchWebAuthFlow({ url, interactive }); } catch (e) { throw syncError(401, e.message); }
+  if (!back) throw syncError(401, 'Sign-in was closed');
+  return new URL(back);
+}
+
+// Each service: how to sign in, keep the sign-in fresh, and work with one list.
+// tasks() returns the list's open, top-level tasks in the service's own order.
+const SYNC = {
+  todoist: {
+    name: 'Todoist',
+    origins: ['https://api.todoist.com/*'],
+    api: 'https://api.todoist.com/api/v1',
+    async signIn(token) { return { token }; },
+    async token(auth) { return auth.token; },
+    async pages(path) {
+      const out = [];
+      let cursor = null;
+      for (let i = 0; i < 5; i++) {
+        const r = await syncFetch(`${this.api}${path}${path.includes('?') ? '&' : '?'}limit=200${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
+        out.push(...r.results);
+        cursor = r.next_cursor;
+        if (!cursor) break;
+      }
+      return out;
+    },
+    async lists() {
+      return (await this.pages('/projects')).filter((p) => !p.is_archived && !p.is_deleted)
+        .map((p) => ({ id: p.id, name: p.name, main: !!p.inbox_project }));
+    },
+    async tasks(list) {
+      return (await this.pages(`/tasks?project_id=${encodeURIComponent(list)}`))
+        .filter((t) => !t.parent_id && !t.checked && !t.is_deleted)
+        .sort((a, b) => a.child_order - b.child_order).map((t) => ({ id: t.id, text: t.content }));
+    },
+    async add(list, text) { return (await syncFetch(`${this.api}/tasks`, { method: 'POST', body: { content: text, project_id: list } })).id; },
+    done(list, id, done) { return syncFetch(`${this.api}/tasks/${id}/${done ? 'close' : 'reopen'}`, { method: 'POST' }); },
+    edit(list, id, text) { return syncFetch(`${this.api}/tasks/${id}`, { method: 'POST', body: { content: text } }); },
+    remove(list, id) { return syncFetch(`${this.api}/tasks/${id}`, { method: 'DELETE' }); },
+  },
+
+  // Microsoft To Do through Microsoft Graph. Sign-in uses the code flow with PKCE;
+  // the refresh token keeps it signed in, and a quiet sign-in covers it if that lapses.
+  microsoft: {
+    name: 'Microsoft To Do',
+    origins: ['https://graph.microsoft.com/*', 'https://login.microsoftonline.com/*'],
+    api: 'https://graph.microsoft.com/v1.0/me/todo',
+    login: 'https://login.microsoftonline.com/common/oauth2/v2.0',
+    scope: 'Tasks.ReadWrite offline_access',
+    async signIn(_, interactive = true) {
+      const verifier = randomString(), state = randomString();
+      const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+      const redirect = chrome.identity.getRedirectURL('microsoft');
+      const q = new URLSearchParams({ client_id: SYNC_CLIENT_IDS.microsoft, response_type: 'code', redirect_uri: redirect, scope: this.scope,
+        code_challenge: challenge, code_challenge_method: 'S256', state, ...(interactive ? { prompt: 'select_account' } : { prompt: 'none' }) });
+      const back = await webAuth(`${this.login}/authorize?${q}`, interactive);
+      if (back.searchParams.get('state') !== state || !back.searchParams.get('code')) throw syncError(401, back.searchParams.get('error_description') || 'Sign-in failed');
+      return this.tokens({ grant_type: 'authorization_code', code: back.searchParams.get('code'), redirect_uri: redirect, code_verifier: verifier });
+    },
+    async tokens(grant) {
+      const r = await jsonFetch(`${this.login}/token`, { method: 'POST', form: { client_id: SYNC_CLIENT_IDS.microsoft, scope: this.scope, ...grant } });
+      return { access: r.access_token, refresh: r.refresh_token || grant.refresh_token, expires: Date.now() + (r.expires_in - 60) * 1000 };
+    },
+    async token(auth, force) {
+      if (!force && auth.access && Date.now() < auth.expires) return auth.access;
+      let next;
+      try { next = await this.tokens({ grant_type: 'refresh_token', refresh_token: auth.refresh }); } catch { next = await this.signIn(null, false); }
+      Object.assign(auth, next);
+      saveSyncConfig();
+      return auth.access;
+    },
+    async pages(url) {
+      const out = [];
+      for (let i = 0; url && i < 10; i++) { const r = await syncFetch(url); out.push(...r.value); url = r['@odata.nextLink']; }
+      return out;
+    },
+    async lists() {
+      return (await this.pages(`${this.api}/lists`)).map((l) => ({ id: l.id, name: l.displayName, main: l.wellknownListName === 'defaultList' }));
+    },
+    async tasks(list) {
+      return (await this.pages(`${this.api}/lists/${list}/tasks?$filter=${encodeURIComponent("status ne 'completed'")}&$top=100`))
+        .map((t) => ({ id: t.id, text: t.title }));
+    },
+    async add(list, text) { return (await syncFetch(`${this.api}/lists/${list}/tasks`, { method: 'POST', body: { title: text } })).id; },
+    done(list, id, done) { return syncFetch(`${this.api}/lists/${list}/tasks/${id}`, { method: 'PATCH', body: { status: done ? 'completed' : 'notStarted' } }); },
+    edit(list, id, text) { return syncFetch(`${this.api}/lists/${list}/tasks/${id}`, { method: 'PATCH', body: { title: text } }); },
+    remove(list, id) { return syncFetch(`${this.api}/lists/${list}/tasks/${id}`, { method: 'DELETE' }); },
+  },
+
+  // Google Tasks. Google's sign-in gives an access token for an hour; after that a quiet
+  // sign-in gets a new one without showing anything, while the user is signed in to Google.
+  google: {
+    name: 'Google Tasks',
+    origins: ['https://tasks.googleapis.com/*'],
+    api: 'https://tasks.googleapis.com/tasks/v1',
+    scope: 'https://www.googleapis.com/auth/tasks',
+    async signIn(_, interactive = true) {
+      const state = randomString();
+      const q = new URLSearchParams({ client_id: SYNC_CLIENT_IDS.google, response_type: 'token', redirect_uri: chrome.identity.getRedirectURL('google'),
+        scope: this.scope, state, ...(interactive ? { prompt: 'select_account' } : { prompt: 'none' }) });
+      const back = await webAuth(`https://accounts.google.com/o/oauth2/v2/auth?${q}`, interactive);
+      const p = new URLSearchParams(back.hash.slice(1));
+      if (p.get('state') !== state || !p.get('access_token')) throw syncError(401, p.get('error') || 'Sign-in failed');
+      return { access: p.get('access_token'), expires: Date.now() + (Number(p.get('expires_in') || 3600) - 60) * 1000 };
+    },
+    async token(auth, force) {
+      if (!force && auth.access && Date.now() < auth.expires) return auth.access;
+      Object.assign(auth, await this.signIn(null, false));
+      saveSyncConfig();
+      return auth.access;
+    },
+    async pages(url) {
+      const out = [];
+      let page = null;
+      for (let i = 0; i < 10; i++) {
+        const r = await syncFetch(`${url}${url.includes('?') ? '&' : '?'}maxResults=100${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`);
+        out.push(...(r.items || []));
+        page = r.nextPageToken;
+        if (!page) break;
+      }
+      return out;
+    },
+    async lists() {
+      return (await this.pages(`${this.api}/users/@me/lists`)).map((l, i) => ({ id: l.id, name: l.title, main: i === 0 }));
+    },
+    async tasks(list) {
+      return (await this.pages(`${this.api}/lists/${list}/tasks?showCompleted=false&showHidden=false`))
+        .filter((t) => !t.parent && t.status !== 'completed' && !t.deleted)
+        .sort((a, b) => (a.position < b.position ? -1 : 1)).map((t) => ({ id: t.id, text: t.title }));
+    },
+    async add(list, text) { return (await syncFetch(`${this.api}/lists/${list}/tasks`, { method: 'POST', body: { title: text } })).id; },
+    done(list, id, done) { return syncFetch(`${this.api}/lists/${list}/tasks/${id}`, { method: 'PATCH', body: done ? { status: 'completed' } : { status: 'needsAction', completed: null } }); },
+    edit(list, id, text) { return syncFetch(`${this.api}/lists/${list}/tasks/${id}`, { method: 'PATCH', body: { title: text } }); },
+    remove(list, id) { return syncFetch(`${this.api}/lists/${list}/tasks/${id}`, { method: 'DELETE' }); },
+  },
+};
+const syncOffered = (k) => k === 'todoist' || !!SYNC_CLIENT_IDS[k];
+
+let todoSync = null;     // { provider, auth, list, listName, lists } while connected
+let syncTasks = [];      // [{ id, text, done }]; done ones stay until "Clear done"
+let syncProblem = '';     // 'signin' (needs signing in again) or 'offline'
+const todoViews = new Set(); // redraw functions of the to-do widgets on the page
+const drawTodos = () => todoViews.forEach((f) => f());
+const usingSync = () => !!todoSync && syncProblem !== 'signin';
+const provider = () => SYNC[todoSync.provider];
+function saveSyncConfig() { if (todoSync) cacheSet('todoSync', todoSync); }
+
+// A request to the connected service, signed in. A rejected sign-in is refreshed once.
+async function syncFetch(url, opts = {}) {
+  const p = provider(), auth = todoSync.auth;
+  try {
+    return await jsonFetch(url, { ...opts, token: await p.token(auth) });
+  } catch (e) {
+    if (e.status !== 401 || todoSync.provider === 'todoist') throw e;
+    return jsonFetch(url, { ...opts, token: await p.token(auth, true) });
+  }
+}
+const failure = (e) => (e.status === 401 || e.status === 403 ? 'signin' : 'offline');
+
+function setSyncTasks(tasks) {
+  syncTasks = tasks;
+  cacheSet('todoSyncCache', { key: `${todoSync?.provider}:${todoSync?.list}`, tasks });
+  drawTodos();
+}
+let syncAt = 0, syncing = null;
+// Fetches the list's open tasks. Ticked ones from this computer stay listed as done
+// until cleared, and new ones still being sent stay too.
+function syncRefresh() {
+  if (!todoSync) return Promise.resolve();
+  if (syncing) return syncing;
+  const for_ = `${todoSync.provider}:${todoSync.list}`;
+  syncing = provider().tasks(todoSync.list).then((open) => {
+    if (!todoSync || `${todoSync.provider}:${todoSync.list}` !== for_) return;
+    const ids = new Set(open.map((t) => t.id));
+    syncProblem = '';
+    syncAt = Date.now();
+    setSyncTasks([...open.map((t) => ({ ...t, done: false })), ...syncTasks.filter((t) => (t.done || t.pending) && !ids.has(t.id))]);
+  }).catch((e) => { syncProblem = failure(e); drawTodos(); }).finally(() => { syncing = null; syncPanel(); });
+  return syncing;
+}
+// Sends one change. If the service refuses it, the list is fetched again so it shows the truth.
+function syncSend(task, fn) {
+  if (task.pending) { task.after = [...(task.after || []), fn]; return; } // wait for its id
+  fn(task.id).then(() => { if (syncProblem === 'offline') { syncProblem = ''; drawTodos(); } })
+    .catch((e) => { syncProblem = failure(e); syncRefresh(); drawTodos(); });
+}
+
+// The to-do list's actions, on whichever list is in use.
+const todoList = () => (usingSync() ? syncTasks : S.todos);
+function todoAdd(text) {
+  if (!usingSync()) {
+    if (S.todos.length >= TODO_MAX) return false;
+    S.todos.push({ text, done: false }); save(); drawTodos(); return true;
+  }
+  const t = { id: `new-${randomString()}`, text, done: false, pending: true };
+  setSyncTasks([...syncTasks.filter((x) => !x.done), t, ...syncTasks.filter((x) => x.done)]);
+  const { list } = todoSync;
+  provider().add(list, text).then((id) => {
+    t.id = id; delete t.pending;
+    setSyncTasks(syncTasks);
+    for (const fn of t.after || []) syncSend(t, fn);
+    delete t.after;
+  }).catch((e) => { setSyncTasks(syncTasks.filter((x) => x !== t)); syncProblem = failure(e); drawTodos(); });
+  return true;
+}
+function todoToggle(t) {
+  t.done = !t.done;
+  if (!usingSync()) { save(); drawTodos(); return; }
+  setSyncTasks(syncTasks);
+  const { list } = todoSync, done = t.done;
+  syncSend(t, (id) => provider().done(list, id, done));
+}
+function todoEdit(t, text) {
+  if (!text) { todoRemove(t); return; }
+  t.text = text.slice(0, usingSync() ? 500 : 120);
+  if (!usingSync()) { save(); drawTodos(); return; }
+  setSyncTasks(syncTasks);
+  const { list } = todoSync, value = t.text;
+  syncSend(t, (id) => provider().edit(list, id, value));
+}
+function todoRemove(t) {
+  if (!usingSync()) { S.todos.splice(S.todos.indexOf(t), 1); save(); drawTodos(); return; }
+  setSyncTasks(syncTasks.filter((x) => x !== t));
+  const { list } = todoSync;
+  syncSend(t, (id) => provider().remove(list, id));
+}
+function todoClearDone() {
+  // Done tasks are already completed in the service; this only tidies the widget.
+  if (!usingSync()) { S.todos = S.todos.filter((t) => !t.done); save(); drawTodos(); return; }
+  setSyncTasks(syncTasks.filter((t) => !t.done));
+}
+
+// Connecting from Customize. Chrome's permission prompt has to come straight from the
+// click, so it's asked for before anything else.
+async function connectSync(key) {
+  const p = SYNC[key], note = $('#syncNote');
+  const token = key === 'todoist' ? $('#todoistToken').value.trim() : null;
+  if (key === 'todoist' && !token) { note.textContent = 'Paste your Todoist API token first.'; return; }
+  const allowed = await chrome.permissions.request({ origins: p.origins, ...(key === 'todoist' ? {} : { permissions: ['identity'] }) }).catch(() => false);
+  if (!allowed) { note.textContent = `Glass Tab needs permission to reach ${p.name}.`; return; }
+  note.textContent = key === 'todoist' ? 'Connecting…' : 'Signing in…';
+  const before = todoSync;
+  try {
+    todoSync = { provider: key, auth: await p.signIn(token), list: '', listName: '', lists: [] };
+    const lists = await p.lists();
+    // Signing in again keeps the list that was showing.
+    const main = (before?.provider === key && lists.find((l) => l.id === before.list)) || lists.find((l) => l.main) || lists[0];
+    if (!main) throw syncError(0, 'No lists');
+    Object.assign(todoSync, { list: main.id, listName: main.name, lists: lists.map(({ id, name }) => ({ id, name })) });
+    if (!(before?.provider === key && before.list === main.id)) syncTasks = [];
+    syncProblem = '';
+    syncPick = 'local';
+    saveSyncConfig();
+    await syncRefresh();
+    note.textContent = syncProblem ? "Connected, but your tasks didn't load. They'll appear once the service answers." : `Connected. Showing ${main.name}.`;
+    if (!S.layout.some((w) => w.k === 'todo')) { setWidgetOn('todo', true); update(); }
+  } catch (e) {
+    todoSync = before;
+    note.textContent = e.status === 401 || e.status === 403
+      ? key === 'todoist' ? "Todoist didn't accept that token. Copy it again from Todoist › Settings › Integrations › Developer." : `${p.name} sign-in didn't finish. Try again.`
+      : `Couldn't reach ${p.name}. Check your connection and try again.`;
+  }
+  syncPanel();
+  renderWidgets();
+}
+async function disconnectSync() {
+  const was = todoSync;
+  todoSync = null; syncTasks = []; syncProblem = '';
+  await chrome.storage.local.remove(['todoSync', 'todoSyncCache']).catch(() => {});
+  if (was) chrome.permissions.remove({ origins: SYNC[was.provider].origins }).catch(() => {});
+  $('#todoistToken').value = '';
+  $('#syncNote').textContent = was ? `Disconnected from ${SYNC[was.provider].name}. Your list on this computer is back.` : '';
+  syncPanel();
+  renderWidgets();
+}
+function setSyncList(id) {
+  const l = todoSync.lists.find((x) => x.id === id);
+  if (!l) return;
+  Object.assign(todoSync, { list: l.id, listName: l.name });
+  saveSyncConfig();
+  setSyncTasks([]);
+  syncPanel();
+  syncRefresh();
+}
+// Loads the saved connection and its last copy of the tasks, then checks for changes:
+// now, every five minutes, and whenever the tab comes back into view.
+async function startSync() {
+  if (!hasChrome) return;
+  const saved = await cacheGet('todoSync');
+  if (!saved || !SYNC[saved.provider] || !syncOffered(saved.provider)) return;
+  todoSync = saved;
+  const cache = await cacheGet('todoSyncCache');
+  if (cache?.key === `${saved.provider}:${saved.list}`) syncTasks = cache.tasks.filter((t) => !t.pending);
+  drawTodos();
+  syncPanel();
+  syncRefresh();
+  setInterval(() => { if (document.visibilityState === 'visible') syncRefresh(); }, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - syncAt > 60 * 1000) syncRefresh(); });
+}
+// Connecting, disconnecting or switching lists in another tab.
+if (hasChrome) chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.todoSync) return;
+  const next = changes.todoSync.newValue;
+  if (!next) { if (todoSync) { todoSync = null; syncTasks = []; syncProblem = ''; syncPanel(); renderWidgets(); } return; }
+  if (todoSync && next.provider === todoSync.provider && next.list === todoSync.list) return;
+  todoSync = next; syncTasks = []; syncProblem = '';
+  syncPanel(); renderWidgets(); syncRefresh();
+});
+
 // To-do: unfinished tasks stay on top, finished ones sink to the bottom and can be
 // cleared in one go. Click a task to edit it; empty it to delete. Enter keeps adding.
 function todoWidget(size) {
   const list = h('ul', { class: 'todo' });
   const left = h('span', { class: 'muted' });
-  const clear = h('button', { class: 'linkish', onclick: () => { S.todos = S.todos.filter((t) => !t.done); save(); draw(); } });
+  const clear = h('button', { class: 'linkish', onclick: todoClearDone });
+  const status = h('div', { class: 'muted todo-status' });
+  const title = h('h3', {}, 'Today');
   const draw = () => {
-    const open = S.todos.filter((t) => !t.done), done = S.todos.filter((t) => t.done);
-    left.textContent = S.todos.length ? (open.length ? `${open.length} left` : 'All done') : '';
+    const items = todoList();
+    const open = items.filter((t) => !t.done), done = items.filter((t) => t.done);
+    // With a service connected, the title is the list's name, like it is there.
+    title.textContent = usingSync() ? todoSync.listName : 'Today';
+    status.textContent = !todoSync ? '' : syncProblem === 'signin'
+      ? `${provider().name} needs you to sign in again, so this is the list on this computer. Open Customize › To-do list.`
+      : syncProblem === 'offline' ? `Can't reach ${provider().name} right now. Changes will show once it's back.` : '';
+    left.textContent = items.length ? (open.length ? `${open.length} left` : 'All done') : '';
     clear.textContent = `Clear ${done.length} done`;
     clear.hidden = !done.length;
     list.replaceChildren(...[...open, ...done].map((t) => {
@@ -569,29 +971,25 @@ function todoWidget(size) {
         text.contentEditable = 'false';
         const v = text.textContent.trim();
         if (v === t.text) return;
-        if (v) t.text = v.slice(0, 120); else S.todos.splice(S.todos.indexOf(t), 1);
-        save();
-        draw();
+        todoEdit(t, v);
       });
       return h('li', { class: t.done ? 'done' : '' },
-        h('button', { class: 'check', 'aria-label': t.done ? 'Mark not done' : 'Mark done', onclick: () => { t.done = !t.done; save(); draw(); } }),
+        h('button', { class: 'check', 'aria-label': t.done ? 'Mark not done' : 'Mark done', onclick: () => todoToggle(t) }),
         text,
-        h('button', { class: 'del', 'aria-label': 'Delete task', onclick: () => { S.todos.splice(S.todos.indexOf(t), 1); save(); draw(); } }, '×'));
+        h('button', { class: 'del', 'aria-label': 'Delete task', onclick: () => todoRemove(t) }, '×'));
     }));
   };
+  todoViews.add(draw);
   draw();
   const input = h('input', { placeholder: size === 'S' ? 'Add a task' : 'Add a task and press Enter', maxlength: '120', 'aria-label': 'Add a task' });
   const form = h('form', { onsubmit: (e) => {
     e.preventDefault();
     const text = input.value.trim();
-    if (!text || S.todos.length >= TODO_MAX) return;
-    S.todos.push({ text, done: false });
+    if (!text || !todoAdd(text)) return;
     input.value = '';
-    save();
-    draw();
-    list.lastElementChild && [...list.children].filter((li) => !li.classList.contains('done')).pop()?.scrollIntoView({ block: 'nearest' });
+    [...list.children].filter((li) => !li.classList.contains('done')).pop()?.scrollIntoView({ block: 'nearest' });
   } }, input);
-  return h('div', { class: 'todo-w' }, h('div', { class: 'whead' }, h('h3', {}, 'Today'), left, clear), list, form);
+  return h('div', { class: 'todo-w' }, h('div', { class: 'whead' }, title, left, clear), status, list, form);
 }
 
 // Focus timer state lives in chrome.storage.local so every tab shows the same timer.
@@ -670,13 +1068,18 @@ function focusWidget(size) {
 }
 setInterval(drawFocus, 1000);
 
+// Large fits three rows of four; the rows spread out to fill the widget, so a shorter
+// list (Chrome only knows the sites you visit often) doesn't leave a gap at the bottom.
 function sitesWidget(size) {
   const grid = h('div', { class: 'sites' });
   if (hasChrome && chrome.topSites) {
-    chrome.topSites.get((list) => grid.replaceChildren(...list.slice(0, size === 'L' ? 8 : 4).map((s) =>
-      h('a', { class: 'site', href: s.url, title: s.title }, h('img', { src: favicon(s.url), alt: '' }), h('span', {}, s.title)))));
+    chrome.topSites.get((list) => {
+      if (!list.length) { grid.className = 'muted'; grid.textContent = 'Sites you visit often show up here.'; return; }
+      grid.replaceChildren(...list.slice(0, size === 'L' ? 12 : 4).map((s) =>
+        h('a', { class: 'site', href: s.url, title: s.title }, h('img', { src: favicon(s.url), alt: '' }), h('span', {}, s.title || new URL(s.url).hostname))));
+    });
   } else { grid.className = ''; grid.textContent = 'Available when installed in Chrome.'; }
-  return h('div', {}, h('h3', {}, 'Top sites'), grid);
+  return h('div', { class: 'sites-w' }, h('h3', {}, 'Top sites'), grid);
 }
 
 function recentWidget(size) {
@@ -863,10 +1266,7 @@ function calendarWidget(size) {
 }
 
 function openCalendarSettings() {
-  $('#panel').hidden = false;
-  $('#gear').setAttribute('aria-expanded', 'true');
-  $('#calLinks').scrollIntoView({ block: 'center' });
-  $('#calLinks').focus();
+  openPanelAt('calendar', '#calLinks');
 }
 
 // Saving the link asks Chrome for access to that calendar service (it has to come
@@ -877,6 +1277,8 @@ async function saveCalendarLinks() {
   if (!links.length) {
     await cacheSet('calLinks', []);
     note.textContent = 'Calendar unlinked.';
+    calCount = 0;
+    syncPanel();
     renderWidgets();
     return;
   }
@@ -884,8 +1286,10 @@ async function saveCalendarLinks() {
   if (!ok) { note.textContent = 'Glass Tab needs permission to read your calendar link.'; return; }
   await cacheSet('calLinks', links);
   await cacheSet('calCache', null);
-  if (!S.layout.some((w) => w.k === 'calendar')) { S.layout.push({ k: 'calendar', size: WIDGETS.calendar.def }); update(); }
+  if (!S.layout.some((w) => w.k === 'calendar')) { setWidgetOn('calendar', true); update(); }
   note.textContent = `Linked ${links.length} ${links.length === 1 ? 'calendar' : 'calendars'}.`;
+  calCount = links.length;
+  syncPanel();
   renderWidgets();
 }
 
@@ -971,6 +1375,7 @@ function endDrag(e) {
 
 function renderWidgets() {
   focusViews.clear();
+  todoViews.clear();
   $('#widgets').replaceChildren(...S.layout.map(buildWidget));
 }
 
@@ -1026,12 +1431,18 @@ $('#search').addEventListener('submit', (e) => {
 if (hasChrome) chrome.runtime.onMessage.addListener((msg) => { if (msg.type === 'focus-search') $('#q').focus(); });
 
 // ---------- settings panel ----------
-function openWeatherSettings() {
+// Opens Customize on one group, with a field in it focused.
+function openPanelAt(group, field) {
   $('#panel').hidden = false;
-  $('#gear').setAttribute('aria-expanded', true);
-  $('#city').scrollIntoView({ block: 'center' });
-  $('#city').focus();
+  $('#gear').setAttribute('aria-expanded', 'true');
+  $(`#panel .group[data-group="${group}"]`).open = true;
+  $(field).scrollIntoView({ block: 'center' });
+  $(field).focus();
 }
+function openWeatherSettings() {
+  openPanelAt('weather', '#city');
+}
+let calCount = 0, googleOn = false;
 
 // Chrome shows its normal location prompt for the new tab page; no manifest
 // permission (and no install warning) needed. If finding you fails, the city you
@@ -1075,9 +1486,7 @@ async function useMyLocation() {
 
 function setQuoteMode(mode) {
   S.quote = mode;
-  const i = S.layout.findIndex((w) => w.k === 'quote');
-  if (mode === 'widget' && i < 0) S.layout.push({ k: 'quote', size: WIDGETS.quote.def });
-  if (mode !== 'widget' && i >= 0) S.layout.splice(i, 1);
+  setWidgetOn('quote', mode === 'widget');
   update();
   renderWidgets();
 }
@@ -1088,8 +1497,7 @@ function drawWidgetRows() {
     const placed = S.layout.find((x) => x.k === key);
     const toggle = () => {
       if (key === 'quote') { setQuoteMode(placed ? 'caption' : 'widget'); return; }
-      if (placed) S.layout.splice(S.layout.indexOf(placed), 1);
-      else S.layout.push({ k: key, size: w.def });
+      setWidgetOn(key, !placed);
       update();
       renderWidgets();
     };
@@ -1100,8 +1508,22 @@ function drawWidgetRows() {
 }
 
 function buildPanel() {
+  // Groups open and close on their own; the panel scrolls when several are open. Which
+  // ones are open is remembered for next time.
+  const groups = document.querySelectorAll('#panel .group');
+  let open = ['wallpaper'];
+  try { open = JSON.parse(localStorage.getItem('glassTabGroups')) || open; } catch {}
+  groups.forEach((d) => {
+    d.open = open.includes(d.dataset.group);
+    d.addEventListener('toggle', () => {
+      const now = [...groups].filter((g) => g.open).map((g) => g.dataset.group);
+      try { localStorage.setItem('glassTabGroups', JSON.stringify(now)); } catch {}
+    });
+  });
+  buildColorEditor();
+  buildSyncSettings();
   $('#calSave').addEventListener('click', saveCalendarLinks);
-  cacheGet('calLinks').then((l) => { if (l?.length) $('#calLinks').value = l.join('\n'); });
+  cacheGet('calLinks').then((l) => { if (l?.length) { $('#calLinks').value = l.join('\n'); calCount = l.length; syncPanel(); } });
   $('#appearance').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { S.appearance = b.dataset.mode; update(); }));
   for (const [key, f] of Object.entries(FONTS)) {
     $('#fonts').append(h('button', { 'data-key': key, style: `font-family: ${f.stack.replaceAll('"', "'")}`, onclick: () => { S.clockFont = key; update(); } }, f.name));
@@ -1130,8 +1552,9 @@ function buildPanel() {
   $('#units').addEventListener('change', (e) => { S.units = e.target.value; update(); renderWidgets(); });
   $('#useLocation').addEventListener('click', useMyLocation);
   $('#glassGoogle').addEventListener('change', (e) => setGlassGoogle(e.target.checked));
-  if (hasChrome) ggIsOn().then((on) => { $('#glassGoogle').checked = on; });
+  if (hasChrome) ggIsOn().then((on) => { $('#glassGoogle').checked = googleOn = on; syncPanel(); });
   $('#editLayout').addEventListener('click', () => setEditing(true));
+  $('#tidyLayout').addEventListener('click', () => { S.layout = tidyLayout(S.layout.map((w) => w.k)); update(); renderWidgets(); });
 
   const panel = $('#panel'), gear = $('#gear');
   const setOpen = (open) => { panel.hidden = !open; gear.setAttribute('aria-expanded', open); };
@@ -1144,18 +1567,24 @@ function buildPanel() {
   document.addEventListener('click', (e) => { if (!panel.hidden && !panel.contains(e.target) && !gear.contains(e.target)) setOpen(false); });
 }
 
-// Wallpaper and clock color swatches depend on the mode, so rebuild them when it changes.
+// Wallpaper and clock color swatches depend on the mode (and the user's own wallpaper
+// colors), so rebuild them when those change.
 let swatchMode = '';
+const swatchBg = (p) => (p.tones ? `linear-gradient(135deg, ${p.tones.join(', ')})` : `conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`);
 function buildSwatches() {
   const m = mode();
-  if (m === swatchMode) return;
-  swatchMode = m;
+  const sig = `${m}${JSON.stringify(S.wpColors)}`;
+  if (sig === swatchMode) return;
+  swatchMode = sig;
   const set = modeSet(m);
-  $('#swatches').replaceChildren(...Object.entries(set.presets).map(([key, p]) => h('button', {
-    'data-key': key, title: p.name, 'aria-label': p.name,
-    style: p.tones ? `background: linear-gradient(135deg, ${p.tones.join(', ')})` : `background: conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`,
-    onclick: () => { S[modeSet().wpKey] = key; update(); },
-  })));
+  $('#swatches').replaceChildren(...Object.keys(set.presets).map((key) => {
+    const p = presetOf(m, key), custom = !!S.wpColors?.[key];
+    return h('button', {
+      'data-key': key, title: custom ? `${p.name} (your colors)` : p.name, 'aria-label': p.name,
+      class: custom ? 'custom' : '', style: `background: ${swatchBg(p)}`,
+      onclick: () => { S[modeSet().wpKey] = key; update(); },
+    });
+  }));
   $('#clockColors').replaceChildren(...Object.entries(set.colors).map(([key, c]) => h('button', {
     'data-key': key, title: c.name, 'aria-label': `${c.name} clock`,
     style: `background: rgb(${c.rgb})`,
@@ -1163,8 +1592,105 @@ function buildSwatches() {
   })));
 }
 
+// Customize > Wallpaper > colors: a wave wallpaper has a front and a back color (the
+// bands blend between them); a glow wallpaper has a background and three glows.
+const WAVE_FIELDS = [['from', 'Front'], ['to', 'Back']];
+const GLOW_FIELDS = [['base', 'Background'], [0, 'Glow 1'], [1, 'Glow 2'], [2, 'Glow 3']];
+let colorEditorFor = '';
+function currentColors(p) {
+  return p.tones ? { from: p.tones[0], to: p.tones[p.tones.length - 1] } : { base: p.base, c: [...p.c] };
+}
+function buildColorEditor() {
+  $('#wpReset').addEventListener('click', () => {
+    const { [wallpaperKey(mode())]: _, ...rest } = S.wpColors;
+    S.wpColors = rest;
+    colorEditorFor = '';
+    update();
+  });
+}
+function drawColorEditor() {
+  const m = mode(), key = wallpaperKey(m), p = presetFor(m);
+  const sig = `${m}:${key}`;
+  $('#wpReset').hidden = !S.wpColors[key];
+  if (sig === colorEditorFor) return; // don't rebuild under a picker that's being dragged
+  colorEditorFor = sig;
+  const now = currentColors(p);
+  const fields = p.tones ? WAVE_FIELDS : GLOW_FIELDS;
+  $('#wpColors').replaceChildren(...fields.map(([f, label]) => {
+    const input = h('input', { type: 'color', value: typeof f === 'number' ? now.c[f] : now[f], 'aria-label': `${p.name} ${label.toLowerCase()} color` });
+    input.addEventListener('input', () => {
+      const next = currentColors(presetFor(m));
+      if (typeof f === 'number') next.c[f] = input.value; else next[f] = input.value;
+      S.wpColors = { ...S.wpColors, [key]: next };
+      update();
+    });
+    return h('label', {}, input, label);
+  }));
+}
+
+// Customize > To-do list: pick where the tasks live. Picking a service shows how to
+// connect it; once connected, which of its lists to show.
+let syncPick = 'local';
+function buildSyncSettings() {
+  $('#todoSource').querySelectorAll('button').forEach((b) => {
+    if (b.dataset.src !== 'local' && !syncOffered(b.dataset.src)) { b.remove(); return; }
+    b.addEventListener('click', () => {
+      const src = b.dataset.src;
+      $('#syncNote').textContent = '';
+      if (src === 'local') { syncPick = 'local'; if (todoSync) disconnectSync(); else syncPanel(); return; }
+      syncPick = src;
+      syncPanel();
+      if (src === 'todoist' && !todoSync) $('#todoistToken').focus();
+    });
+  });
+  $('#syncConnect').addEventListener('click', () => connectSync(syncPick));
+  $('#todoistToken').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); connectSync('todoist'); } });
+  $('#syncList').addEventListener('change', (e) => setSyncList(e.target.value));
+  $('#syncDisconnect').addEventListener('click', disconnectSync);
+}
+function drawSyncSettings() {
+  const on = todoSync?.provider || 'local';
+  // The lit chip is the one just picked, or else where the tasks live now. Picking a
+  // service that isn't connected (even while another is) shows how to connect it.
+  const shown = syncPick === 'local' ? on : syncPick;
+  const again = shown === on && syncProblem === 'signin'; // connected, but signed out
+  const setup = shown !== on || again;
+  document.querySelectorAll('#todoSource button').forEach((b) => b.classList.toggle('on', b.dataset.src === shown));
+  $('#syncSetup').hidden = !setup;
+  $('#todoistSetup').hidden = shown !== 'todoist';
+  const who = { todoist: 'Todoist', microsoft: 'Microsoft', google: 'Google' }[shown];
+  if (setup) $('#syncConnect').textContent = shown === 'todoist' ? (again ? 'Connect Todoist again' : 'Connect Todoist') : `Sign in ${again ? 'again ' : ''}with ${who}`;
+  $('#syncConnected').hidden = on === 'local' || setup;
+  if (on !== 'local') {
+    const sel = $('#syncList');
+    const sig = todoSync.lists.map((l) => l.id).join();
+    if (sel.dataset.sig !== sig) { sel.replaceChildren(...todoSync.lists.map((l) => h('option', { value: l.id }, l.name))); sel.dataset.sig = sig; }
+    sel.value = todoSync.list;
+  }
+}
+
+// What each closed group in Customize shows on its row.
+function drawSummaries() {
+  const m = mode(), p = presetFor(m);
+  const fps = S.animated ? `${S.fps} fps` : 'still';
+  const set = (id, text) => { $(id).textContent = text; };
+  set('#sumWallpaper', `${p.name}${S.wpColors[wallpaperKey(m)] ? ' (yours)' : ''} · ${S.appearance === 'auto' ? 'auto' : S.appearance} · ${fps}`);
+  set('#sumGlass', S.solidGlass ? 'Less transparent' : S.liquid ? 'Liquid' : 'Frosted');
+  set('#sumClock', `${(FONTS[S.clockFont] || FONTS.tall).name} · ${{ solid: 'solid', clear: 'clear glass', frost: 'frosted' }[S.clockStyle]}`);
+  set('#sumGreeting', `${S.greeting ? 'Greeting on' : 'Greeting off'} · quote ${{ off: 'off', caption: 'under clock', widget: 'widget' }[S.quote]}`);
+  set('#sumWidgets', `${S.layout.length} on`);
+  set('#sumTodo', todoSync ? `${SYNC[todoSync.provider].name}${syncProblem === 'signin' ? ' · sign in again' : ''}` : 'On this computer');
+  set('#sumCalendar', calCount ? `${calCount} linked` : 'Not linked');
+  set('#sumWeather', S.useLocation ? S.coordsName || 'Your location' : S.city || 'No city yet');
+  set('#sumChrome', `Glass Google ${googleOn ? 'on' : 'off'}`);
+}
+
 function syncPanel() {
   buildSwatches();
+  drawColorEditor();
+  drawSyncSettings();
+  $('#wallpaperTitle').textContent = mode() === 'light' ? 'Light mode wallpaper' : 'Dark mode wallpaper';
+  drawSummaries();
   const set = modeSet();
   const mark = (sel, active) => document.querySelectorAll(`${sel} button`).forEach((b) => b.classList.toggle('on', active(b)));
   mark('#swatches', (b) => b.dataset.key === S[set.wpKey]);
@@ -1209,6 +1735,7 @@ S = loadMirror();
 buildPanel();
 renderAll();
 tick();
+startSync();
 
 (async () => {
   focusState = freshFocus(await cacheGet('focus'));
@@ -1244,8 +1771,9 @@ const TOUR_SETUP = {
     const chips = h('div', { class: 'chips' }, ...keys.map((k) => h('button', {
       class: placed(k) ? 'on' : '',
       onclick: (e) => {
-        if (placed(k)) S.layout = S.layout.filter((w) => w.k !== k);
-        else S.layout.push({ k, size: WIDGETS[k].def });
+        // Re-arrange the whole set each time, so it stays tidy whatever is picked.
+        const keys = S.layout.map((w) => w.k);
+        S.layout = tidyLayout(placed(k) ? keys.filter((x) => x !== k) : [...keys, k]);
         e.currentTarget.classList.toggle('on', placed(k));
         update();
         renderWidgets();
@@ -1295,13 +1823,13 @@ const TOUR_SETUP = {
       if (e.key !== 'Enter') return;
       e.preventDefault();
       const text = task.value.trim();
-      if (!text || S.todos.length >= TODO_MAX) return;
-      S.todos.push({ text, done: false });
-      save(); renderWidgets();
+      if (!text || !todoAdd(text)) return;
       task.value = '';
-      status.textContent = `Added. ${S.todos.filter((t) => !t.done).length} on your list.`;
+      status.textContent = `Added. ${todoList().filter((t) => !t.done).length} on your list.`;
     });
-    return [task, status];
+    // Tasks already in Todoist, Microsoft To Do or Google Tasks can show here instead.
+    const sync = h('button', { class: 'linkish', onclick: () => { endTour(); openPanelAt('todo', '#todoSource'); } }, 'Use Todoist, Microsoft To Do or Google Tasks instead');
+    return [task, status, sync];
   },
 };
 
@@ -1316,7 +1844,8 @@ const TOUR = [
   { el: '#widgets', title: 'Move and resize', text: 'Press and hold any widget to move it. While editing, the S, M and L buttons change its size and × removes it.' },
   { el: '#search', title: 'Search', text: `Search Google or type a website here. On any other site, press ${SHORTCUT} to bring up the same glass search bar.` },
   { el: '#gear', title: 'Customize', text: 'This round button in the corner opens Customize: wallpapers, light or dark, motion, glass, the clock, widgets and more. You can also make your Google searches glass.' },
-  { el: '#gear', title: 'A seamless top bar', text: "If the top of the page doesn't blend into Chrome's top bar, open Customize and change Top bar under Appearance: Chrome's own if you have no theme, Glass Tab theme if you added ours." },
+  { el: '#gear', title: 'A seamless top bar', text: "If the top of the page doesn't blend into Chrome's top bar, open Customize and change Top bar under Chrome and Google: Chrome's own if you have no theme, Glass Tab theme if you added ours." },
+  { title: "Chrome's footer", text: 'If Chrome shows a bar along the bottom of this page, you can hide it: right-click the bar and choose "Hide footer on New Tab page". The steps are also in Customize under Chrome and Google.' },
   { title: "You're all set", text: 'Make it yours. You can take this tour again any time from Customize.', next: 'Done' },
 ];
 const tourSteps = () => TOUR.filter((s) => !s.when || s.when());
