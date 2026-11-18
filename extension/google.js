@@ -72,10 +72,15 @@
   // solid while it's open: the search box itself, or a layer we had made see-through.
   const POPUPS = '[role="dialog"], [role="menu"], [role="listbox"], [aria-modal="true"]';
   function markOpen() {
-    document.querySelectorAll('.gt-pop').forEach((el) => el.classList.remove('gt-pop'));
+    document.querySelectorAll('.gt-pop, .gt-raise').forEach((el) => el.classList.remove('gt-pop', 'gt-raise'));
     let open = false;
     for (const list of document.querySelectorAll('[role="listbox"]')) {
       if (!list.offsetHeight) continue;
+      // Glass cards are their own layers, so on Google layouts that don't give the search
+      // area a z-index they paint over the list. Lift the list's positioned ancestors.
+      for (let el = list; el && el !== document.body; el = el.parentElement) {
+        if (getComputedStyle(el).position !== 'static') el.classList.add('gt-raise');
+      }
       for (let el = list; el && el !== document.body; el = el.parentElement) {
         if (el.classList.contains('gt-box')) { open = true; break; }
         if (el.classList.contains('gt-clear')) { el.classList.add('gt-pop'); break; }

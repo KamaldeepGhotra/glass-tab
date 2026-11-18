@@ -45,6 +45,7 @@ html.glass-google .gt-box {
 /* Suggestions open: the box covers results below, so it turns almost solid to stay readable */
 html.glass-google.gt-open .gt-box,
 html.glass-google .gt-clear.gt-pop { background: color-mix(in srgb, var(--gt-base) 94%, #fff 6%) !important; }
+html.glass-google .gt-raise { z-index: 2147483000 !important; }
 html.glass-google.gt-light.gt-open .gt-box,
 html.glass-google.gt-light .gt-clear.gt-pop { background: rgba(255, 255, 255, .97) !important; }
 

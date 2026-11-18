@@ -1,6 +1,6 @@
-# Chrome Web Store listing: Glass Tab 1.0.0
+# Chrome Web Store listing: Glass Tab 1.0.1
 
-Upload `store/glass-tab-1.0.0.zip`. Paste each section below into the matching place in the Developer Dashboard.
+Upload `store/glass-tab-1.0.1.zip`. Paste each section below into the matching place in the Developer Dashboard.
 
 ## Store listing
 
