@@ -68,6 +68,16 @@ How sign-in works:
 - Google's sign-in gives an access token that lasts an hour.
 - After that, Glass Tab gets a new one quietly (`prompt=none`) while the user is signed in to Google. Only if that fails does the widget ask them to sign in again.
 
+## Testing first, then everyone
+
+`SYNC_TESTING` (next to `SYNC_CLIENT_IDS`) keeps a service out of the store version
+while its app is still in testing with Microsoft or Google, since only test users could
+sign in. Unpacked copies still show it, so you can test. Set it to `false` once Google
+has verified the app (or, for Microsoft, once you're happy it works).
+
+The Google client ID is set: `544432589627-msj23kilqev2gkv59cjf64b6i5gqirpj.apps.googleusercontent.com`
+(project "Glass Tab", kamghotradev@gmail.com).
+
 ## After adding a client ID
 
 1. Put the ID in `SYNC_CLIENT_IDS`, raise the version in `extension/manifest.json`, and build the zip.

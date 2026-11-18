@@ -610,7 +610,7 @@ const TODO_MAX = 50, NOTES_MAX = 6000;
 // Microsoft and Google sign in through Chrome's sign-in window (chrome.identity) with
 // Glass Tab's own app registration; their client IDs go in SYNC_CLIENT_IDS. A service
 // whose ID is empty isn't offered. See docs/todo-sync.md.
-const SYNC_CLIENT_IDS = { microsoft: '', google: '' };
+const SYNC_CLIENT_IDS = { microsoft: '', google: '544432589627-msj23kilqev2gkv59cjf64b6i5gqirpj.apps.googleusercontent.com' };
 
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const randomString = () => b64url(crypto.getRandomValues(new Uint8Array(32)));
@@ -763,7 +763,12 @@ const SYNC = {
     remove(list, id) { return syncFetch(`${this.api}/lists/${list}/tasks/${id}`, { method: 'DELETE' }); },
   },
 };
-const syncOffered = (k) => k === 'todoist' || !!SYNC_CLIENT_IDS[k];
+// Services still in testing with Microsoft or Google (only their test users can sign in)
+// are offered only in an unpacked copy. A copy installed from the Chrome Web Store has
+// an update_url in its manifest; an unpacked one doesn't. Set to false once approved.
+const SYNC_TESTING = { microsoft: true, google: true };
+const fromStore = hasChrome && !!chrome.runtime.getManifest?.().update_url;
+const syncOffered = (k) => k === 'todoist' || (!!SYNC_CLIENT_IDS[k] && !(SYNC_TESTING[k] && fromStore));
 
 let todoSync = null;     // { provider, auth, list, listName, lists } while connected
 let syncTasks = [];      // [{ id, text, done }]; done ones stay until "Clear done"
