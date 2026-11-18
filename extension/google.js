@@ -57,19 +57,20 @@
       // Pop-ups (menus, dialogs, image previews) float over the page and must stay solid.
       if (el.closest(POPUPS)) continue;
       const cs = getComputedStyle(el);
-      // "Show more" fades painted in one of Google's own surface colors (the AI Overview's
-      // is a blue-gray) show up as a box on the wallpaper. Turn that block into a glass
-      // card and repaint the fade in the wallpaper color.
-      if (FADE.test(cs.backgroundImage) && !cs.backgroundImage.includes(pageBg) && el.offsetWidth >= innerWidth * 0.3) {
+      // Wide "Show more" fades laid over a block (the AI Overview's) show up as a box of
+      // Google's page color on the wallpaper. Turn that block into a glass card and
+      // repaint the fade in the wallpaper color.
+      if (FADE.test(cs.backgroundImage) && el.offsetWidth >= innerWidth * 0.3) {
         // The outermost block around the fade that's still about the fade's own width.
         let block = el.closest('[data-hveid]');
         const w = block?.offsetWidth;
         for (let b = block?.parentElement.closest('[data-hveid]'); b && b.offsetWidth <= w + 40; b = b.parentElement.closest('[data-hveid]')) block = b;
-        const card = block?.closest('.gt-card') || block;
+        const card = block?.parentElement.closest('.gt-card') || block;
         if (card) {
           card.classList.add('gt-card');
           card.querySelectorAll('.gt-card').forEach((c) => c.classList.remove('gt-card'));
           fitFade(el, cs, card);
+          continue;
         }
       }
       if (cs.position === 'fixed' || cs.position === 'absolute') continue;
@@ -83,18 +84,21 @@
     }
   }
 
-  // A fade along the bottom of a card is stretched to the card's edges, so the
-  // wallpaper-colored fade doesn't leave a strip of a different color beside it.
+  // A fade is stretched to its card's sides (and its bottom, when it's near it), so the
+  // wallpaper-colored fade doesn't stick out of the card or leave a strip beside it.
   function fitFade(el, cs, card) {
     el.classList.add('gt-fade');
     const r = el.getBoundingClientRect();
     const c = card.getBoundingClientRect();
+    if (!r.height) return; // hidden once the block is expanded
     const [left, right, bottom] = [cs.left, cs.right, cs.bottom].map(parseFloat);
-    if (Math.abs(c.bottom - r.bottom) > 40 || [left, right, bottom].some(Number.isNaN)) return;
+    if ([left, right].some(Number.isNaN)) return;
     el.style.setProperty('left', `${left - (r.left - c.left)}px`, 'important');
     el.style.setProperty('right', `${right - (c.right - r.right)}px`, 'important');
-    el.style.setProperty('bottom', `${bottom - (c.bottom - r.bottom)}px`, 'important');
     el.style.setProperty('width', 'auto', 'important');
+    const gap = c.bottom - r.bottom;
+    if (Number.isNaN(bottom) || gap < 0 || gap > 120) return;
+    el.style.setProperty('bottom', `${bottom - gap}px`, 'important');
     el.classList.add('gt-fade-edge');
   }
 
@@ -121,12 +125,19 @@
     root.classList.toggle('gt-open', open);
   }
 
-  // Google's header only becomes fixed once you scroll, so this runs on scroll too.
+  // Google's header only becomes fixed once you scroll, so this runs on scroll too. The
+  // frosted strip is only there while results scroll under it: back at the top it comes
+  // off, so the header matches the tabs below it again.
   function markHeader() {
-    const q = document.querySelector('textarea[name="q"], input[name="q"]');
-    for (let el = q?.parentElement; el && el !== document.body; el = el.parentElement) {
-      if (['sticky', 'fixed'].includes(getComputedStyle(el).position)) { el.classList.add('gt-header'); break; }
+    let header = null;
+    if (scrollY > 0) {
+      const q = document.querySelector('textarea[name="q"], input[name="q"]');
+      for (let el = q?.parentElement; el && el !== document.body; el = el.parentElement) {
+        if (['sticky', 'fixed'].includes(getComputedStyle(el).position)) { header = el; break; }
+      }
     }
+    document.querySelectorAll('.gt-header').forEach((el) => el !== header && el.classList.remove('gt-header'));
+    header?.classList.add('gt-header');
   }
 
   let pageBg = '';
