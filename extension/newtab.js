@@ -1569,7 +1569,8 @@ function buildPanel() {
     if (editing) setEditing(false);
     else setOpen(false);
   });
-  document.addEventListener('click', (e) => { if (!panel.hidden && !panel.contains(e.target) && !gear.contains(e.target)) setOpen(false); });
+  // Tour buttons can open Customize themselves, so a click there doesn't count as outside.
+  document.addEventListener('click', (e) => { if (!panel.hidden && !panel.contains(e.target) && !gear.contains(e.target) && !e.target.closest('#tour')) setOpen(false); });
 }
 
 // Wallpaper and clock color swatches depend on the mode (and the user's own wallpaper
@@ -1836,6 +1837,12 @@ const TOUR_SETUP = {
     const sync = h('button', { class: 'linkish', onclick: () => { endTour(); openPanelAt('todo', '#todoSource'); } }, 'Use Todoist, Microsoft To Do or Google Tasks instead');
     return [task, status, sync];
   },
+  sync() {
+    return [h('button', { class: 'chip', onclick: () => { endTour(); openPanelAt('todo', '#todoSource'); } }, 'Set it up')];
+  },
+  tidy() {
+    return [h('button', { class: 'chip', onclick: () => { $('#tidyLayout').click(); showTourStep(tourStep); } }, 'Tidy up now')];
+  },
 };
 
 // The tour: what each part is, then a quick setup for the widgets that need it.
@@ -1853,9 +1860,27 @@ const TOUR = [
   { title: "Chrome's footer", text: 'If Chrome shows a bar along the bottom of this page, you can hide it: right-click the bar and choose "Hide footer on New Tab page". The steps are also in Customize under Chrome and Google.' },
   { title: "You're all set", text: 'Make it yours. You can take this tour again any time from Customize.', next: 'Done' },
 ];
-const tourSteps = () => TOUR.filter((s) => !s.when || s.when());
+// What's new: the same kind of walk-through, offered once after an update to people
+// who already took the setup tour. Raise NEWS_ID when the steps change.
+const NEWS_ID = '1.0.5';
+const syncNames = () => {
+  const n = Object.keys(SYNC).filter(syncOffered).map((k) => SYNC[k].name);
+  return n.length > 1 ? `${n.slice(0, -1).join(', ')} or ${n.at(-1)}` : n[0];
+};
+const NEWS = [
+  { title: "What's new in Glass Tab", text: 'Glass Tab just updated with a few new things. Want a quick look? It takes 30 seconds.', next: 'Show me', skip: 'Not now' },
+  { el: '#gear', title: 'Customize, tidied up', text: 'Settings now sit in sections you can open and close. Under Wallpaper, you can also change the colors of any wallpaper.' },
+  { el: widgetEl('todo'), when: () => placed('todo'), title: 'Sync your to-do list', get text() { return `Show your ${syncNames()} list here. Adding, ticking and editing tasks updates the app too.`; }, setup: 'sync' },
+  { el: widgetEl('sites'), when: () => placed('sites'), title: 'Top sites fills up', text: 'Top sites now uses all the room it has. Make it Large to see up to 12 sites.' },
+  { el: '#widgets', title: 'Tidy up', text: 'Widgets looking scattered? Tidy up lines them up in neat rows. It\'s also in Customize under Widgets.', setup: 'tidy' },
+  { when: () => googleOn, title: 'Cleaner glass Google', text: "Google's results, AI Overviews and suggestions look cleaner in glass, and Google's home page is glass now too." },
+];
+let activeTour = TOUR;
+const tourSteps = () => activeTour.filter((s) => !s.when || s.when());
 let tourStep = -1;
-function startTour() {
+function startTour(steps = TOUR) {
+  activeTour = steps;
+  tourShown = null;
   $('#panel').hidden = true;
   $('#gear').setAttribute('aria-expanded', 'false');
   setEditing(false);
@@ -1866,7 +1891,8 @@ function startTour() {
 function endTour() {
   $('#tour').hidden = true;
   tourStep = -1;
-  try { localStorage.setItem('glassTabTour', '1'); } catch {}
+  // Finishing either tour covers this update's news, so new users don't see it too.
+  try { localStorage.setItem('glassTabTour', '1'); localStorage.setItem('glassTabNews', NEWS_ID); } catch {}
   showFooterTip();
 }
 let tourShown = null;
@@ -1893,7 +1919,8 @@ function showTourStep(i) {
     Object.assign(ring.style, { left: '50%', top: '45%', width: '0px', height: '0px', borderRadius: '50%' });
   }
   $('#tourCount').textContent = `${i + 1} of ${steps.length}`;
-  $('#tourNext').textContent = step.next || 'Next';
+  $('#tourNext').textContent = step.next || (i === steps.length - 1 ? 'Done' : 'Next');
+  $('#tourSkip').textContent = step.skip || 'Skip';
   $('#tourBack').hidden = i === 0;
   $('#tourSkip').hidden = i === steps.length - 1;
   // Card goes below the lit-up part if there's room, otherwise above, otherwise beside.
@@ -1919,7 +1946,7 @@ function showTourStep(i) {
 $('#tourNext').addEventListener('click', () => (tourStep < tourSteps().length - 1 ? showTourStep(tourStep + 1) : endTour()));
 $('#tourBack').addEventListener('click', () => showTourStep(Math.max(0, tourStep - 1)));
 $('#tourSkip').addEventListener('click', endTour);
-$('#replayTour').addEventListener('click', () => { tourShown = null; startTour(); });
+$('#replayTour').addEventListener('click', () => startTour());
 addEventListener('resize', () => { if (tourStep >= 0) showTourStep(tourStep); });
 document.addEventListener('keydown', (e) => {
   if (tourStep < 0) return;
@@ -1942,5 +1969,6 @@ $('#footerTipClose').addEventListener('click', () => {
 try {
   // Wait a moment so the widgets have drawn before the tour measures them.
   if (!localStorage.getItem('glassTabTour')) setTimeout(startTour, 600);
+  else if (localStorage.getItem('glassTabNews') !== NEWS_ID) setTimeout(() => startTour(NEWS), 600);
   else showFooterTip();
 } catch {}
