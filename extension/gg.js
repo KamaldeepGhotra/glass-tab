@@ -5,7 +5,8 @@
 const GG = {
   id: 'glass-google',
   origins: ['https://www.google.com/*'],
-  matches: ['https://www.google.com/search*'],
+  // Results pages, and Google's home page (the logo on a results page goes there).
+  matches: ['https://www.google.com/search*', 'https://www.google.com/', 'https://www.google.com/?*', 'https://www.google.com/webhp*'],
 };
 
 async function ggGet() {
