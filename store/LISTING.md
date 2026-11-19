@@ -24,7 +24,7 @@ Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass T
 
 If the dashboard says it can't submit, click **Why can't I submit?** at the top. It lists the boxes that are empty.
 
-**Current version:** 1.0.3, zip `store/glass-tab-1.0.3.zip`.
+**Current version:** 1.0.4, zip `store/glass-tab-1.0.4.zip`.
 **Since the last listing update:** the Description gained two lines (colors, Todoist), and Privacy
 gained the Todoist/Google/Microsoft permissions and Authentication information. Both are already
 written into the blocks below.
