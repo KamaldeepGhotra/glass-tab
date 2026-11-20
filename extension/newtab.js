@@ -1802,11 +1802,17 @@ function resetGroup(g) {
   // The quote can be a widget, so its setting and the layout move together.
   if (g === 'greeting') setWidgetOn('quote', S.quote === 'widget');
   if (g === 'widgets' && S.quote === 'widget') S.quote = 'caption';
+  // Glass Google goes back to how a new install starts: off, with the card offering it.
+  const hadGoogle = g === 'chrome' && googleOn;
+  if (hadGoogle) setGlassGoogle(false).then(async () => { ggState = ''; if (hasChrome) await ggSet({ state: '' }); });
   colorEditorFor = '';
   update();
   renderWidgets();
   const name = $(`#panel .group[data-group="${g}"] summary span`).textContent;
-  toast(`${name} reset`, () => { Object.assign(S, before); colorEditorFor = ''; update(); renderWidgets(); });
+  toast(`${name} reset`, () => {
+    if (hadGoogle) setGlassGoogle(true); // first, so Chrome's prompt comes straight from the click
+    Object.assign(S, before); colorEditorFor = ''; update(); renderWidgets();
+  });
 }
 
 // ---------- your own wallpaper ----------
@@ -1860,20 +1866,21 @@ function buildPhotoSettings() {
       note.textContent = "Glass Tab couldn't open that file. Try a JPEG or PNG photo.";
     }
   });
-  $('#photoRemove').addEventListener('click', async () => {
-    const was = { photo, photoData, wallpaper: S.wallpaper, wallpaperLight: S.wallpaperLight };
-    await setPhoto(null);
-    if (S.wallpaper === 'photo') S.wallpaper = DEFAULTS.wallpaper;
-    if (S.wallpaperLight === 'photo') S.wallpaperLight = DEFAULTS.wallpaperLight;
-    $('#photoNote').textContent = '';
+}
+// The × on your photo in the wallpaper picker. Built-in wallpapers have none.
+async function removePhoto() {
+  const was = { photo, photoData, wallpaper: S.wallpaper, wallpaperLight: S.wallpaperLight };
+  await setPhoto(null);
+  if (S.wallpaper === 'photo') S.wallpaper = DEFAULTS.wallpaper;
+  if (S.wallpaperLight === 'photo') S.wallpaperLight = DEFAULTS.wallpaperLight;
+  $('#photoNote').textContent = '';
+  swatchMode = '';
+  update();
+  toast('Photo removed', async () => {
+    await setPhoto(was.photo, was.photoData);
+    Object.assign(S, { wallpaper: was.wallpaper, wallpaperLight: was.wallpaperLight });
     swatchMode = '';
     update();
-    toast('Photo removed', async () => {
-      await setPhoto(was.photo, was.photoData);
-      Object.assign(S, { wallpaper: was.wallpaper, wallpaperLight: was.wallpaperLight });
-      swatchMode = '';
-      update();
-    });
   });
 }
 // The photo from storage: on a page that had no copy of it, and when another tab changes it.
@@ -1944,7 +1951,7 @@ function buildSwatches() {
   }), ...(photo ? [h('button', {
     'data-key': 'photo', title: 'Your photo', 'aria-label': 'Your photo', class: 'photo',
     style: `background: center / cover url("${photo.thumb}")`, onclick: () => { S[modeSet().wpKey] = 'photo'; update(); },
-  })] : []));
+  }), h('button', { class: 'photo-x', title: 'Remove your photo', 'aria-label': 'Remove your photo', onclick: (e) => { e.stopPropagation(); removePhoto(); } }, '×')] : []));
   $('#clockColors').replaceChildren(...Object.entries(set.colors).map(([key, c]) => h('button', {
     'data-key': key, title: c.name, 'aria-label': `${c.name} clock`,
     style: `background: rgb(${c.rgb})`,
@@ -2061,7 +2068,6 @@ function syncPanel() {
   mark('#appearance', (b) => b.dataset.mode === S.appearance);
   mark('#fonts', (b) => b.dataset.key === S.clockFont);
   drawWidgetRows();
-  $('#photoRemove').hidden = !photo;
   $('#photoPick').textContent = photo ? 'Choose a different photo' : 'Use your own photo';
   mark('#styles', (b) => b.dataset.style === S.clockStyle);
   mark('#quoteModes', (b) => b.dataset.mode === S.quote);
