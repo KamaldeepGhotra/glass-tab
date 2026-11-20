@@ -24,7 +24,8 @@ Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass T
 
 If the dashboard says it can't submit, click **Why can't I submit?** at the top. It lists the boxes that are empty.
 
-**Current version:** 1.0.5, zip `store/glass-tab-1.0.5.zip`.
+**Current version:** 1.0.6, zip `store/glass-tab-1.0.6.zip`. 1.0.6 is a bug fix (Glass Google in AI Mode),
+so the listing and Privacy stay as they are.
 **Since the last listing update:** for 1.0.5 the Description gained lines for your own photo,
 pinned sites, the 24-hour forecast, Undo, settings search, Reset and Backup. No permissions were
 added, so **Privacy** doesn't change. Both are already written into the blocks below.

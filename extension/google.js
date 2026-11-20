@@ -70,7 +70,10 @@
     // Wide layers in the page color go, so the wallpaper shows. Inside a glass card,
     // "wide" means half the card (like the strip behind the AI Overview's "Show more"),
     // so small buttons keep their own color.
-    if (cs.backgroundColor === pageBg && (el.offsetWidth >= innerWidth * 0.4 || el.offsetWidth >= (el.closest('.gt-card')?.offsetWidth ?? Infinity) * 0.5)) el.classList.add('gt-clear');
+    // "Wide" is capped at 480px: on a big screen 40% of the window is wider than Google's
+    // results column, and the strip behind the AI Overview's "Show more" (which the pill takes
+    // its color from) would stay, showing as a square block behind the rounded button.
+    if (cs.backgroundColor === pageBg && (el.offsetWidth >= Math.min(innerWidth * 0.4, 480) || el.offsetWidth >= (el.closest('.gt-card')?.offsetWidth ?? Infinity) * 0.5)) el.classList.add('gt-clear');
     if (cs.backgroundImage.includes(pageBg)) el.classList.add('gt-nofade');
   }
   // Each search result: the top-level block around a result title.
