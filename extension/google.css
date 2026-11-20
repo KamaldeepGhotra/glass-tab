@@ -31,15 +31,13 @@ html.glass-google .gt-nofade {
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 55%);
   mask-image: linear-gradient(to bottom, transparent, #000 55%);
 }
-/* Google's own colored fades (AI Overview "Show more") are repainted in the wallpaper
-   color, so they hide the collapsed text without leaving a box. google.js stretches the
-   one along a card's bottom to the card's edges. */
-html.glass-google .gt-card .gt-fade {
-  background-image: linear-gradient(transparent, color-mix(in srgb, var(--gt-base) 85%, transparent) 52px, var(--gt-base) 80px) !important;
+/* Google's own colored fades (AI Overview "Show more") lose their color; the box they sit
+   in fades its text out instead (google.js sets where), so it works on any wallpaper. */
+html.glass-google .gt-fadeout { background-image: none !important; }
+html.glass-google .gt-mask {
+  -webkit-mask-image: linear-gradient(#000 var(--gt-mask-a), transparent var(--gt-mask-b), transparent var(--gt-mask-c), #000 var(--gt-mask-c));
+  mask-image: linear-gradient(#000 var(--gt-mask-a), transparent var(--gt-mask-b), transparent var(--gt-mask-c), #000 var(--gt-mask-c));
 }
-html.glass-google .gt-fade-edge { border-radius: 0 0 22px 22px; }
-html.glass-google .gt-card.gt-card.gt-has-fade { background-image: linear-gradient(to top, var(--gt-base) var(--gt-fade-gap, 0px), transparent var(--gt-fade-gap, 0px)) !important; }
-html.glass-google .gt-noline { border-color: transparent !important; background-color: transparent !important; }
 /* Sticky header keeps a frosted strip so text stays readable while scrolling */
 html.glass-google .gt-header { background: color-mix(in srgb, var(--gt-base) 40%, transparent) !important; backdrop-filter: blur(24px) saturate(160%); }
 

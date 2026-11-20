@@ -50,82 +50,81 @@
       el.classList.toggle('gt-clear', i < rounded.length - 1);
     });
     markHeader();
-    unfitCards();
-    // Anything painted in Google's page color (wrappers, bars, "Show more" fades)
-    // becomes see-through so the wallpaper shows.
-    for (const el of document.querySelectorAll('body *')) {
-      if (el.matches('.gt-box, .gt-card, .gt-clear, .gt-nofade, img, svg, svg *')) continue;
-      // Pop-ups (menus, dialogs, image previews) float over the page and must stay solid.
-      if (el.closest(POPUPS)) continue;
-      const cs = getComputedStyle(el);
-      // Wide "Show more" fades laid over a block (the AI Overview's) show up as a box of
-      // Google's page color on the wallpaper. Turn that block into a glass card and
-      // repaint the fade in the wallpaper color.
-      if (FADE.test(cs.backgroundImage) && el.offsetWidth >= innerWidth * 0.3) {
-        // The outermost block around the fade that's still about the fade's own width.
-        let block = el.closest('[data-hveid]');
-        const w = block?.offsetWidth;
-        for (let b = block?.parentElement.closest('[data-hveid]'); b && b.offsetWidth <= w + 40; b = b.parentElement.closest('[data-hveid]')) block = b;
-        const card = block?.parentElement.closest('.gt-card') || block;
-        if (card) {
-          card.classList.add('gt-card');
-          card.querySelectorAll('.gt-card').forEach((c) => c.classList.remove('gt-card'));
-          fitFade(el, cs, card);
-          continue;
-        }
-      }
-      if (cs.position === 'fixed' || cs.position === 'absolute') continue;
-      // Wide layers in the page color go, so the wallpaper shows. Inside a glass card,
-      // "wide" means half the card (like the strip behind the AI Overview's "Show more"),
-      // so small buttons keep their own color.
-      if (cs.backgroundColor === pageBg && (el.offsetWidth >= innerWidth * 0.4 || el.offsetWidth >= (el.closest('.gt-card')?.offsetWidth ?? Infinity) * 0.5)) el.classList.add('gt-clear');
-      if (cs.backgroundImage.includes(pageBg)) el.classList.add('gt-nofade');
-    }
-    // Each search result: the top-level block around a result title.
+    for (const el of document.querySelectorAll('body *')) markEl(el);
+    markCards();
+  }
+
+  // Anything painted in Google's page color (wrappers, bars, "Show more" fades)
+  // becomes see-through so the wallpaper shows.
+  function markEl(el) {
+    if (el.matches('.gt-box, .gt-card, .gt-clear, .gt-nofade, .gt-fadeout, img, svg, svg *')) return;
+    // Pop-ups (menus, dialogs, image previews) float over the page and must stay solid.
+    if (el.closest(POPUPS)) return;
+    const cs = getComputedStyle(el);
+    // Google's "Show more" fades are painted in its page color, which shows up as a band
+    // on the wallpaper. They become real fades: the text itself fades out.
+    if (FADE.test(cs.backgroundImage) && el.offsetWidth >= 150) { softFade(el, cs); return; }
+    // Until Google's page color is known nothing below can be judged (an empty color
+    // would match everything).
+    if (!pageBg || cs.position === 'fixed' || cs.position === 'absolute') return;
+    // Wide layers in the page color go, so the wallpaper shows. Inside a glass card,
+    // "wide" means half the card (like the strip behind the AI Overview's "Show more"),
+    // so small buttons keep their own color.
+    if (cs.backgroundColor === pageBg && (el.offsetWidth >= innerWidth * 0.4 || el.offsetWidth >= (el.closest('.gt-card')?.offsetWidth ?? Infinity) * 0.5)) el.classList.add('gt-clear');
+    if (cs.backgroundImage.includes(pageBg)) el.classList.add('gt-nofade');
+  }
+  // Each search result: the top-level block around a result title.
+  function markCards() {
     for (const h of document.querySelectorAll('#rso h3, #search h3')) {
       const card = h.closest('#rso > *') || h.closest('[data-hveid]');
       if (card && card.offsetHeight > 40 && !card.parentElement.closest('.gt-card')) card.classList.add('gt-card');
     }
   }
 
-  // A fade is stretched to its card's sides (and its bottom, when it's near it), so the
-  // wallpaper-colored fade doesn't stick out of the card or leave a strip beside it.
-  function fitFade(el, cs, card) {
-    el.classList.add('gt-fade');
+  // A real fade: Google's fade loses its color, and the text in the box it sits at the
+  // bottom of (the box that cuts the text off) gets a mask, so the text fades into the
+  // wallpaper the same way. While the box grows or shrinks, a ResizeObserver refits the
+  // mask before each frame is drawn, and takes it off once Google hides the fade (the
+  // block is expanded).
+  const fades = new Map(); // fade -> { box it fades, where Google's fade turns solid }
+  function softFade(el, cs) {
+    // Google's fade turns solid a little way down (e.g. "rgb(...) 14px"); the text is gone from there.
+    const solid = parseFloat(cs.backgroundImage.match(/\)\s+([\d.]+)px/)?.[1]) || el.offsetHeight * 0.3;
+    el.classList.add('gt-fadeout');
+    let box = fades.get(el)?.box;
+    if (!box) {
+      // The nearest box around it that clips its content and ends where the fade ends.
+      const fb = el.getBoundingClientRect().bottom;
+      for (let p = el.parentElement, i = 0; p && i < 5 && !box; p = p.parentElement, i++) {
+        if (getComputedStyle(p).overflowY !== 'visible' && Math.abs(p.getBoundingClientRect().bottom - fb) <= 24) box = p;
+      }
+      if (!box) return; // nothing to mask: the fade just goes
+      fades.set(el, { box, solid });
+      sizes.observe(el);
+      sizes.observe(box);
+    }
+    fitMask(el, box, solid);
+  }
+  // The mask goes on the text inside the box (its in-flow children), not the box itself:
+  // Google's "Show more" button sits in the same box, over the fade, and must stay.
+  function fitMask(el, box, solidAt) {
     const r = el.getBoundingClientRect();
-    const c = card.getBoundingClientRect();
-    if (!r.height) return; // hidden once the block is expanded
-    const [left, right, bottom] = [cs.left, cs.right, cs.bottom].map(parseFloat);
-    if ([left, right].some(Number.isNaN)) return;
-    el.style.setProperty('left', `${left - (r.left - c.left)}px`, 'important');
-    el.style.setProperty('right', `${right - (c.right - r.right)}px`, 'important');
-    el.style.setProperty('width', 'auto', 'important');
-    const gap = c.bottom - r.bottom;
-    if (Number.isNaN(bottom) || gap < 0 || gap > 120) return;
-    el.style.setProperty('bottom', `${bottom - gap}px`, 'important');
-    el.classList.add('gt-fade-edge');
-    // Google's box around the fade can cut it off above the card's bottom. The card paints
-    // that last strip in the fade's color, and a divider line along it is hidden, so the
-    // fade runs right to the card's edge.
-    let seen = r.bottom;
-    for (let p = el.parentElement; p && p !== card; p = p.parentElement) {
-      if (getComputedStyle(p).overflowY !== 'visible') seen = Math.min(seen, p.getBoundingClientRect().bottom);
-    }
-    card.classList.add('gt-has-fade');
-    card.style.setProperty('--gt-fade-gap', `${Math.max(0, Math.round(c.bottom - seen))}px`);
-    for (const line of card.querySelectorAll('*')) {
-      const b = line.getBoundingClientRect();
-      if (b.height <= 2 && b.width > c.width / 2 && b.bottom >= seen - 2 && b.top <= c.bottom) line.classList.add('gt-noline');
+    for (const kid of box.children) {
+      if (kid === el || kid.contains(el) || ['absolute', 'fixed'].includes(getComputedStyle(kid).position)) continue;
+      if (!r.height) { kid.classList.remove('gt-mask'); continue; }
+      const top = kid.getBoundingClientRect().top;
+      kid.style.setProperty('--gt-mask-a', `${Math.round(r.top - top)}px`);
+      kid.style.setProperty('--gt-mask-b', `${Math.round(r.top - top + Math.min(r.height, solidAt))}px`);
+      kid.style.setProperty('--gt-mask-c', `${Math.round(r.bottom - top)}px`);
+      kid.classList.add('gt-mask');
     }
   }
-  // Once a card is expanded its fade is gone, so the strip and the hidden lines go too.
-  function unfitCards() {
-    for (const card of document.querySelectorAll('.gt-has-fade')) {
-      if ([...card.querySelectorAll('.gt-fade-edge')].some((f) => f.offsetHeight)) continue;
-      card.classList.remove('gt-has-fade');
-      card.querySelectorAll('.gt-noline').forEach((l) => l.classList.remove('gt-noline'));
+  const sizes = new ResizeObserver(() => {
+    for (const [el, { box, solid }] of fades) {
+      if (!el.isConnected || !box.isConnected) { fades.delete(el); sizes.unobserve(el); continue; }
+      fitMask(el, box, solid);
     }
-  }
+  });
 
   // The suggestions list covers the results below it. Glass can't blur that far (it sits
   // inside the frosted header), so whatever surface the list is drawn on turns almost
@@ -166,17 +165,47 @@
   }
 
   let pageBg = '';
-  function start() {
-    // Read Google's own background (with our style off) to see which mode it is in.
+  // Read Google's own background (with our style off) to see which mode it is in.
+  // Google paints its page color on <body> or on <html>, depending on the account.
+  function readPage() {
     root.classList.remove('glass-google');
-    // Google paints its page color on <body> or on <html>, depending on the account.
+    const was = pageBg;
     pageBg = [document.body, root].map((el) => getComputedStyle(el).backgroundColor).find((c) => lum(c) !== null) || '';
-    const l = lum(pageBg) ?? 0;
+    // Google's colors can arrive after the page starts. If the color changed, what was
+    // tagged by the old one is untagged first.
+    if (was && pageBg !== was) document.querySelectorAll('.gt-clear, .gt-nofade').forEach((el) => el.classList.remove('gt-clear', 'gt-nofade'));
     mark();
-    setMode(l >= 128);
-    // Results load in pieces, so re-tag when the page changes (at most a few times a second).
+    setMode((lum(pageBg) ?? 0) >= 128);
+  }
+  // Starts as soon as the page's body begins, not when the page is done: Google sends the
+  // AI Overview with the first part of the page, and Chrome draws it right away. Once the
+  // whole page is in, Google's colors are read again in case its styles came in late.
+  function start() {
+    readPage();
+    if (document.readyState === 'loading') {
+      addEventListener('DOMContentLoaded', readPage, { once: true });
+      // A stylesheet that arrives while the page loads can bring Google's page color.
+      const sheet = (e) => {
+        if (document.readyState !== 'loading') { document.removeEventListener('load', sheet, true); return; }
+        if (e.target.tagName === 'LINK') readPage();
+      };
+      document.addEventListener('load', sheet, true); // a stylesheet's load event never reaches window
+    }
+    // Results load in pieces (the AI Overview arrives last). New parts are tagged as they
+    // arrive, before they're drawn, so they never show Google's own colors first; a full
+    // pass a moment later catches anything whose look depended on what came after it.
     let timer = null;
-    new MutationObserver(() => {
+    new MutationObserver((changes) => {
+      let n = 0;
+      for (const { addedNodes } of changes) {
+        for (const node of addedNodes) {
+          if (node.nodeType !== 1 || !node.isConnected || n > 4000) continue;
+          const all = [node, ...node.querySelectorAll('*')];
+          n += all.length;
+          all.forEach(markEl);
+        }
+      }
+      if (n) markCards();
       markOpen();
       if (timer) return;
       timer = setTimeout(() => { timer = null; mark(); }, 250);
@@ -188,6 +217,6 @@
       scrollTimer = setTimeout(() => { scrollTimer = null; markHeader(); }, 150);
     }, { passive: true });
   }
-  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', start, { once: true });
-  else start();
+  if (document.body) start();
+  else new MutationObserver((m, o) => { if (document.body) { o.disconnect(); start(); } }).observe(root, { childList: true });
 })();
