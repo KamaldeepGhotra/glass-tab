@@ -2232,7 +2232,8 @@ const TOUR = [
   { el: widgetEl('weather'), when: () => placed('weather'), title: 'Weather', text: 'Type your city, or let Glass Tab use your location.', setup: 'weather' },
   { el: widgetEl('calendar'), when: () => placed('calendar'), title: 'Calendar', text: 'Link your Google or iCloud calendar to see what\'s coming up. The link stays on this computer. It updates every 15 minutes.', setup: 'calendar' },
   { el: widgetEl('todo'), when: () => placed('todo'), title: 'To-do', text: 'Add a task or two. Click a task later to edit it.', setup: 'todo' },
-  { el: '#widgets', title: 'Move and resize', text: 'Press and hold any widget to move it. While editing, the S, M and L buttons change its size and × removes it.' },
+  { el: widgetEl('sites'), when: () => placed('sites'), title: 'Top sites', text: 'The sites you visit most show up here. Add site pins your own, and pinned sites always come first.' },
+  { el: '#widgets', title: 'Move and resize', text: 'Press and hold any widget to move it. While editing, the S, M and L buttons change its size and × removes it. Removed something by mistake? Undo shows for a few seconds.' },
   { el: '#search', title: 'Search', text: `Search Google or type a website here. Press / to jump here. On any other site, press ${SHORTCUT} to bring up the same glass search bar.` },
   { el: '#gear', title: 'Customize', text: 'This round button in the corner opens Customize: wallpapers (or your own photo), light or dark, motion, glass, the clock, widgets and more. The box at the top finds any setting.' },
   { when: () => !googleOn && ggState !== 'off', title: 'Make Google glass too', get text() { return GG_PITCH(); }, setup: 'google' },
@@ -2254,8 +2255,8 @@ const NEWS = [
   { el: widgetEl('todo'), when: () => placed('todo'), title: 'Sync your to-do list', get text() { return `Show your ${syncNames()} list here. Adding, ticking and editing tasks updates the app too.`; }, setup: 'sync' },
   { el: '#widgets', title: 'A few more things', text: 'Pin your own sites with Add site in Top sites. Press / to search, and Undo shows after you delete something. Calendar events open with a click, Large weather shows the next 24 hours, and Tidy up lines up your widgets.', setup: 'tidy' },
   // On: what changed. Off: a strong nudge to turn it on, with the button right here.
-  { when: () => googleOn || ggState !== 'off', get title() { return googleOn ? 'Cleaner glass Google' : 'Make Google glass too'; },
-    get text() { return googleOn ? "Google's results, AI Overviews and suggestions look cleaner in glass, and Google's home page is glass now too." : GG_PITCH(); },
+  { when: () => googleOn || ggState !== 'off', get title() { return googleOn ? 'Smoother glass Google' : 'Make Google glass too'; },
+    get text() { return googleOn ? "AI Overviews now load and open smoothly in glass, with no flicker, and their text fades straight into your wallpaper. Google's home page is glass now too." : GG_PITCH(); },
     get setup() { return googleOn ? null : 'google'; } },
 ];
 let activeTour = TOUR;
