@@ -34,6 +34,14 @@ html.glass-google .gt-nofade {
 /* Google's own colored fades (AI Overview "Show more") lose their color; the box they sit
    in fades its text out instead (google.js sets where), so it works on any wallpaper. */
 html.glass-google .gt-fadeout { background-image: none !important; }
+/* Fades with nothing to mask (above the AI question box, which text scrolls under) fade into
+   the wallpaper's base color, blurred where Google's layers let the blur through. */
+html.glass-google .gt-fadeout.gt-blurfade {
+  background-image: linear-gradient(transparent, color-mix(in srgb, var(--gt-base) 92%, transparent) 45%) !important;
+  backdrop-filter: blur(14px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 45%);
+  mask-image: linear-gradient(to bottom, transparent, #000 45%);
+}
 html.glass-google .gt-mask {
   -webkit-mask-image: linear-gradient(#000 var(--gt-mask-a), transparent var(--gt-mask-b), transparent var(--gt-mask-c), #000 var(--gt-mask-c));
   mask-image: linear-gradient(#000 var(--gt-mask-a), transparent var(--gt-mask-b), transparent var(--gt-mask-c), #000 var(--gt-mask-c));

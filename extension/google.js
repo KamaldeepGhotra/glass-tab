@@ -51,7 +51,7 @@
     });
     markHeader();
     for (const el of document.querySelectorAll('body *')) markEl(el);
-    markCards();
+    markCards(true);
   }
 
   // Anything painted in Google's page color (wrappers, bars, "Show more" fades)
@@ -74,10 +74,24 @@
     if (cs.backgroundImage.includes(pageBg)) el.classList.add('gt-nofade');
   }
   // Each search result: the top-level block around a result title.
-  function markCards() {
+  // A glass card blurs what's behind it, which also makes it the frame for anything pinned
+  // (fixed or sticky) inside it. So a block holding a pinned part never becomes a card, and
+  // AI Mode (Google's chat, which a follow-up in the AI Overview opens in place) gets none:
+  // a card there pulls Google's side rail, header and question box into the conversation.
+  const aiMode = () => new URLSearchParams(location.search).get('udm') === '50';
+  const pinned = (el) => ['fixed', 'sticky'].includes(getComputedStyle(el).position);
+  const holdsPinned = (card) => [...card.querySelectorAll('*')].some(pinned);
+  // A block with several results in it (more than one part holding a title) is a list, not a result.
+  const isList = (el) => [...el.children].filter((k) => k.querySelector('h3')).length > 1;
+  function markCards(recheck = false) {
+    const seen = new Map(); // one look per block per pass: big blocks hold thousands of elements
+    const holds = (el) => (seen.has(el) ? seen.get(el) : seen.set(el, holdsPinned(el)).get(el));
+    if (aiMode()) { document.querySelectorAll('.gt-card').forEach((el) => el.classList.remove('gt-card')); return; }
+    if (recheck) document.querySelectorAll('.gt-card').forEach((el) => (holds(el) || isList(el)) && el.classList.remove('gt-card'));
     for (const h of document.querySelectorAll('#rso h3, #search h3')) {
-      const card = h.closest('#rso > *') || h.closest('[data-hveid]');
-      if (card && card.offsetHeight > 40 && !card.parentElement.closest('.gt-card')) card.classList.add('gt-card');
+      // Some layouts wrap every result (and pinned parts) in one block: then each result's own block.
+      const card = [h.closest('#rso > *'), h.closest('[data-hveid]')].find((el) => el && (el.classList.contains('gt-card') || (!holds(el) && !isList(el))));
+      if (card && !card.classList.contains('gt-card') && card.offsetHeight > 40 && !card.parentElement.closest('.gt-card')) card.classList.add('gt-card');
     }
   }
 
@@ -98,7 +112,9 @@
       for (let p = el.parentElement, i = 0; p && i < 5 && !box; p = p.parentElement, i++) {
         if (getComputedStyle(p).overflowY !== 'visible' && Math.abs(p.getBoundingClientRect().bottom - fb) <= 24) box = p;
       }
-      if (!box) return; // nothing to mask: the fade just goes
+      // Nothing to mask (like the fade above the AI question box, which text scrolls under):
+      // it becomes a frosted fade, so the text blurs out behind it instead of showing through.
+      if (!box) { el.classList.add('gt-blurfade'); return; }
       fades.set(el, { box, solid });
       sizes.observe(el);
       sizes.observe(box);
