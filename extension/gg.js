@@ -18,7 +18,13 @@ async function ggSet(patch) {
 
 async function ggRegister() {
   await chrome.scripting.unregisterContentScripts({ ids: [GG.id] }).catch(() => {});
-  await chrome.scripting.registerContentScripts([{ id: GG.id, matches: GG.matches, css: ['google.css'], js: ['google.js'], runAt: 'document_start' }]);
+  try {
+    await chrome.scripting.registerContentScripts([{ id: GG.id, matches: GG.matches, css: ['google.css'], js: ['google.js'], runAt: 'document_start' }]);
+  } catch (e) {
+    // Turning it on registers it from the page and from the background worker (which sees
+    // the new permission) at the same moment; whichever comes second finds it done.
+    if (!/Duplicate script ID/i.test(e.message)) throw e;
+  }
 }
 
 async function ggIsOn() {
