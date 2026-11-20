@@ -1,5 +1,9 @@
 importScripts('gg.js');
 
+// Removing Glass Tab opens a page where people can say why, if they want to.
+// Nothing is sent from the extension. Keep in step with FEEDBACK_URL in newtab.js.
+chrome.runtime.setUninstallURL('https://github.com/KamaldeepGhotra/glass-tab/issues/new');
+
 // Show the setup guide once, right after install.
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   if (reason === 'install') chrome.tabs.create({ url: 'welcome.html' });

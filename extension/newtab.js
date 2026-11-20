@@ -213,7 +213,12 @@ const DEFAULTS = {
   city: '', units: 'c', useLocation: false, coords: null, coordsName: '',
   todos: [], focusMinutes: 30, notes: '', countdown: { title: '', date: '' },
   wpColors: {}, // wallpaper key -> { from, to } for waves, { base, c: [3] } for glows
+  pins: [], // sites the user pinned to Top sites: [{ url, title }]
+  glassGoogle: false, // turned on on any computer; Chrome's permission for it is per computer
 };
+// Where "Share an idea" and the page after uninstalling go. Keep in step with background.js.
+const FEEDBACK_URL = 'https://github.com/KamaldeepGhotra/glass-tab/issues/new';
+const STORE_REVIEWS = 'https://chromewebstore.google.com/detail/fhjfmkjhchflbbgklhabbgomnkadcmlp/reviews';
 
 const $ = (s) => document.querySelector(s);
 const hasChrome = typeof chrome !== 'undefined' && !!chrome.storage;
@@ -225,6 +230,8 @@ let editing = false;
 // instantly with the right look, before the async sync storage answers.
 function migrate(raw) {
   const s = { ...raw };
+  // A setting removed from sync (cleared in Chrome) comes back as undefined: use the default.
+  for (const k of Object.keys(s)) if (s[k] === undefined) delete s[k];
   if (!s.layout && Array.isArray(s.widgets)) {
     s.layout = s.widgets.filter((k) => k !== 'quote' && WIDGETS[k]).map((k) => ({ k, size: WIDGETS[k].def }));
     if (s.widgets.includes('quote')) { s.quote = 'widget'; s.layout.push({ k: 'quote', size: 'M' }); }
@@ -258,6 +265,20 @@ function cacheSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
+// Your own wallpaper photo. It stays on this computer: chrome.storage.local holds it, and
+// a copy in localStorage lets boot.js draw it before anything else loads. Never synced.
+let photo = null; // { thumb, base, c: [3] }
+let photoData = '';  // the picture itself, as a data URL
+try { photo = JSON.parse(localStorage.getItem('glassTabPhoto') || 'null'); photoData = localStorage.getItem('glassTabPhotoData') || ''; } catch {}
+if (!photoData) photo = null;
+function mirrorPhoto() {
+  try {
+    if (!photo) { localStorage.removeItem('glassTabPhoto'); localStorage.removeItem('glassTabPhotoData'); return; }
+    localStorage.setItem('glassTabPhoto', JSON.stringify(photo));
+    localStorage.setItem('glassTabPhotoData', photoData);
+  } catch { try { localStorage.removeItem('glassTabPhotoData'); } catch {} } // too big for the copy: it loads a moment later instead
+}
+
 // ---------- helpers ----------
 function h(tag, attrs = {}, ...kids) {
   const e = document.createElement(tag);
@@ -269,6 +290,26 @@ function h(tag, attrs = {}, ...kids) {
   e.append(...kids.flat().filter((k) => k != null));
   return e;
 }
+
+// ---------- undo toast ----------
+// After deleting something, a short glass note with Undo shows for six seconds.
+let toastTimer = 0, toastUndo = null, toastKind = '';
+function toast(text, undo, kind = '') {
+  clearTimeout(toastTimer);
+  toastUndo = undo;
+  toastKind = kind;
+  $('#toastText').textContent = text;
+  $('#toastUndo').hidden = !undo;
+  $('#toast').hidden = false;
+  toastTimer = setTimeout(closeToast, 6000);
+}
+function closeToast() {
+  clearTimeout(toastTimer);
+  toastUndo = null;
+  toastKind = '';
+  $('#toast').hidden = true;
+}
+$('#toastUndo').addEventListener('click', () => { const undo = toastUndo; closeToast(); undo?.(); });
 
 function favicon(url) {
   return `${chrome.runtime.getURL('/_favicon/')}?pageUrl=${encodeURIComponent(url)}&size=32`;
@@ -303,6 +344,8 @@ function modeSet(m = mode()) {
 // The saved wallpaper key for a mode (the first one if the saved key is unknown).
 function wallpaperKey(m) {
   const set = modeSet(m);
+  // "photo" synced from another computer, where the photo isn't: use the default.
+  if (S[set.wpKey] === 'photo') return photo ? 'photo' : DEFAULTS[set.wpKey];
   return set.presets[S[set.wpKey]] ? S[set.wpKey] : Object.keys(set.presets)[0];
 }
 // Blends two colors into n tones, front to back, for a wave wallpaper.
@@ -313,6 +356,7 @@ function ramp(from, to, n) {
 }
 // A wallpaper with the user's own colors, if they changed them in Customize.
 function presetOf(m, key) {
+  if (key === 'photo' && photo) return { name: 'Your photo', base: photo.base, c: photo.c, photo: true };
   const p = modeSet(m).presets[key], o = S.wpColors?.[key];
   if (!o) return p;
   if (p.tones && o.from && o.to) return waves(p.name, ramp(o.from, o.to, p.tones.length));
@@ -333,7 +377,7 @@ function varsFor(m) {
   const weight = S.clockStyle !== 'solid' && f.weight < 400 ? 400 : f.weight;
   return {
     '--base': p.base, '--c1': p.c[0], '--c2': p.c[1], '--c3': p.c[2], '--bar': (TOP_BAR[S.topBar] || TOP_BAR.chrome)[m],
-    '--wave': p.tones ? waveURL(p.tones) : 'none', '--blob-display': p.tones ? 'none' : 'block',
+    '--wave': p.tones ? waveURL(p.tones) : 'none', '--blob-display': p.tones || p.photo ? 'none' : 'block', '--photo-display': p.photo ? 'block' : 'none',
     '--blur': `${S.blur}px`, '--tint': String(S.tint / 100),
     '--clock-font': f.stack, '--clock-weight': String(weight), '--clock-size': `${S.clockSize}px`, '--greeting-size': `${S.greetingSize}px`,
     '--clock-rgb': (set.colors[S[set.colorKey]] || Object.values(set.colors)[0]).rgb,
@@ -345,6 +389,8 @@ function applyLook() {
   const base = [S.animated && 'animated', S.liquid && 'liquid', S.solidGlass && 'solid'].filter(Boolean).join(' ');
   const root = document.documentElement;
   for (const [k, v] of Object.entries(varsFor(m))) root.style.setProperty(k, v);
+  // The photo is large, so it's set only when it changes.
+  if (photoShown !== photoData) { photoShown = photoData; root.style.setProperty('--photo', photoData ? `url("${photoData}")` : 'none'); }
   root.className = `${base}${m === 'light' ? ' light' : ''}`;
   $('#clock').className = `${S.clockStyle}${(FONTS[S.clockFont] || FONTS.tall).variable ? ' rim' : ''}`;
   const p = presetFor(m);
@@ -403,7 +449,7 @@ function updateMotion() {
   if (moving()) scheduleMotion();
   else for (const [el] of blobs) el.style.transform = '';
 }
-let lastLook = '';
+let lastLook = '', photoShown = null;
 
 // ---------- glass Google search (helpers in gg.js) ----------
 async function setGlassGoogle(on) {
@@ -420,7 +466,12 @@ async function setGlassGoogle(on) {
     $('#googleNote').textContent = `Couldn't turn this on: ${err.message}`;
   }
   box.checked = googleOn = await ggIsOn();
+  ggState = on ? (googleOn ? 'on' : ggState) : 'off';
+  // Synced, so another computer can offer to turn it on there too.
+  if (S.glassGoogle !== googleOn) { S.glassGoogle = googleOn; save(); }
+  if (googleOn) $('#ggNudge').hidden = true;
   syncPanel();
+  return googleOn;
 }
 
 // ---------- clock ----------
@@ -526,7 +577,7 @@ async function getWeather() {
     const cached = await cacheGet('weather');
     if (!cached || Date.now() - cached.at > 30 * 60e3 || !S.coordsName) await refreshCoords();
   }
-  const key = `v3|${here ? `${S.coords.lat.toFixed(2)},${S.coords.lon.toFixed(2)},${S.coordsName}` : S.city}|${S.units}`;
+  const key = `v4|${here ? `${S.coords.lat.toFixed(2)},${S.coords.lon.toFixed(2)},${S.coordsName}` : S.city}|${S.units}`;
   const cached = await cacheGet('weather');
   if (cached && cached.key === key && Date.now() - cached.at < 30 * 60e3) return cached.data;
 
@@ -540,7 +591,7 @@ async function getWeather() {
   const unit = S.units === 'f' ? '&temperature_unit=fahrenheit&wind_speed_unit=mph' : '';
   const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
     + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code'
-    + '&hourly=temperature_2m,weather_code&forecast_hours=7'
+    + '&hourly=temperature_2m,weather_code,precipitation_probability&forecast_hours=25'
     + `&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=5${unit}`)).json();
   const c = j.current;
   const data = {
@@ -552,7 +603,7 @@ async function getWeather() {
     humidity: c.relative_humidity_2m,
     wind: c.wind_speed_10m,
     windUnit: S.units === 'f' ? 'mph' : 'km/h',
-    hours: j.hourly.time.slice(1).map((t, i) => ({ t, temp: j.hourly.temperature_2m[i + 1], code: j.hourly.weather_code[i + 1] })),
+    hours: j.hourly.time.slice(1).map((t, i) => ({ t, temp: j.hourly.temperature_2m[i + 1], code: j.hourly.weather_code[i + 1], rain: j.hourly.precipitation_probability?.[i + 1] })),
     days: j.daily.time.map((t, i) => ({ t, max: j.daily.temperature_2m_max[i], min: j.daily.temperature_2m_min[i], code: j.daily.weather_code[i], rain: j.daily.precipitation_probability_max?.[i] })),
   };
   cacheSet('weather', { key, at: Date.now(), data });
@@ -580,8 +631,17 @@ function weatherWidget(size) {
             h('span', {}, day(x.t, i)), h('span', {}, `${deg(x.max)} / ${deg(x.min)}`)])));
           return;
         }
-        // Large: current details, the next few hours and five days.
+        // Large: current details, the next 24 hours (scroll sideways) and five days.
         const hour = (t) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric' });
+        const hours = h('div', { class: 'wx-strip wx-hours', 'aria-label': 'Next 24 hours' }, ...d.hours.map((x) => h('div', {},
+          h('span', { class: 'muted' }, hour(x.t)), h('b', {}, wxIcon(x.code)), h('span', {}, deg(x.temp)),
+          h('span', { class: 'wx-rain' }, x.rain >= 20 ? `${x.rain}%` : ''))));
+        // A mouse wheel scrolls the hours sideways.
+        hours.addEventListener('wheel', (e) => {
+          if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+          e.preventDefault();
+          hours.scrollLeft += e.deltaY;
+        }, { passive: false });
         body.className = 'wx wx-l';
         body.replaceChildren(
           h('div', { class: 'wx-now' }, now, h('div', { class: 'wx-facts' },
@@ -589,7 +649,7 @@ function weatherWidget(size) {
             h('span', {}, `Humidity ${Math.round(d.humidity)}%`),
             h('span', {}, `Wind ${Math.round(d.wind)} ${d.windUnit}`),
             h('span', {}, `High ${deg(d.days[0].max)} · Low ${deg(d.days[0].min)}`))),
-          h('div', { class: 'wx-strip' }, ...d.hours.map((x) => h('div', {}, h('span', { class: 'muted' }, hour(x.t)), h('b', {}, wxIcon(x.code)), h('span', {}, deg(x.temp))))),
+          hours,
           h('div', { class: 'wx-strip' }, ...d.days.map((x, i) => h('div', {}, h('span', { class: 'muted' }, day(x.t, i)), h('b', {}, wxIcon(x.code)), h('span', {}, `${deg(x.max)} ${deg(x.min)}`)))),
         );
       })
@@ -823,8 +883,9 @@ function syncSend(task, fn) {
 const todoList = () => (usingSync() ? syncTasks : S.todos);
 function todoAdd(text) {
   if (!usingSync()) {
-    if (S.todos.length >= TODO_MAX) return false;
-    S.todos.push({ text, done: false }); save(); drawTodos(); return true;
+    if (S.todos.length >= TODO_MAX) return null;
+    const t = { text, done: false };
+    S.todos.push(t); save(); drawTodos(); return t;
   }
   const t = { id: `new-${randomString()}`, text, done: false, pending: true };
   setSyncTasks([...syncTasks.filter((x) => !x.done), t, ...syncTasks.filter((x) => x.done)]);
@@ -835,7 +896,7 @@ function todoAdd(text) {
     for (const fn of t.after || []) syncSend(t, fn);
     delete t.after;
   }).catch((e) => { setSyncTasks(syncTasks.filter((x) => x !== t)); syncProblem = failure(e); drawTodos(); });
-  return true;
+  return t;
 }
 function todoToggle(t) {
   t.done = !t.done;
@@ -853,14 +914,32 @@ function todoEdit(t, text) {
   syncSend(t, (id) => provider().edit(list, id, value));
 }
 function todoRemove(t) {
+  toast('Task deleted', undoRemove(t));
   if (!usingSync()) { S.todos.splice(S.todos.indexOf(t), 1); save(); drawTodos(); return; }
   setSyncTasks(syncTasks.filter((x) => x !== t));
   const { list } = todoSync;
   syncSend(t, (id) => provider().remove(list, id));
 }
+// Undo for a deleted task: back in its place on this computer's list. A connected
+// service has deleted it already, so it's added there again.
+function undoRemove(t) {
+  const local = !usingSync(), at = todoList().indexOf(t);
+  return () => {
+    if (local !== !usingSync()) return; // the list changed since
+    if (local) { S.todos.splice(Math.min(at, S.todos.length), 0, t); save(); drawTodos(); return; }
+    const again = todoAdd(t.text);
+    if (again && t.done) todoToggle(again);
+  };
+}
 function todoClearDone() {
   // Done tasks are already completed in the service; this only tidies the widget.
-  if (!usingSync()) { S.todos = S.todos.filter((t) => !t.done); save(); drawTodos(); return; }
+  // Undo puts them back at the end, where done tasks sit anyway.
+  const local = !usingSync(), cleared = todoList().filter((t) => t.done);
+  toast(`Cleared ${cleared.length} done`, () => {
+    if (local !== !usingSync()) return;
+    if (local) { S.todos = [...S.todos, ...cleared].slice(0, TODO_MAX); save(); drawTodos(); } else setSyncTasks([...syncTasks, ...cleared]);
+  });
+  if (local) { S.todos = S.todos.filter((t) => !t.done); save(); drawTodos(); return; }
   setSyncTasks(syncTasks.filter((t) => !t.done));
 }
 
@@ -1075,16 +1154,74 @@ setInterval(drawFocus, 1000);
 
 // Large fits three rows of four; the rows spread out to fill the widget, so a shorter
 // list (Chrome only knows the sites you visit often) doesn't leave a gap at the bottom.
+// Sites you pin come first and stay; Chrome's most visited fill the rest.
+const PIN_MAX = 12;
+const siteName = (url) => new URL(url).hostname.replace(/^www\./, '');
+const sameSite = (a, b) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
 function sitesWidget(size) {
+  const limit = size === 'L' ? 12 : 4;
   const grid = h('div', { class: 'sites' });
-  if (hasChrome && chrome.topSites) {
-    chrome.topSites.get((list) => {
-      if (!list.length) { grid.className = 'muted'; grid.textContent = 'Sites you visit often show up here.'; return; }
-      grid.replaceChildren(...list.slice(0, size === 'L' ? 12 : 4).map((s) =>
-        h('a', { class: 'site', href: s.url, title: s.title }, h('img', { src: favicon(s.url), alt: '' }), h('span', {}, s.title || new URL(s.url).hostname))));
-    });
-  } else { grid.className = ''; grid.textContent = 'Available when installed in Chrome.'; }
-  return h('div', { class: 'sites-w' }, h('h3', {}, 'Top sites'), grid);
+  const el = h('div', { class: 'sites-w' });
+  const tile = (s, pinned) => {
+    const name = s.title || siteName(s.url);
+    const a = h('a', { class: 'site', href: s.url, title: name }, h('img', { src: hasChrome ? favicon(s.url) : '', alt: '' }), h('span', {}, name));
+    if (!pinned) return a;
+    return h('div', { class: 'site-box' }, a, h('button', { class: 'unpin', 'aria-label': `Remove ${name}`, title: 'Remove', onclick: (e) => { e.stopPropagation(); unpinSite(s); } }, '×'));
+  };
+  const draw = (top) => {
+    const pins = S.pins.slice(0, limit);
+    const rest = top.filter((s) => !pins.some((p) => sameSite(p.url, s.url))).slice(0, limit - pins.length);
+    if (!pins.length && !rest.length) {
+      grid.className = 'muted';
+      grid.textContent = hasChrome ? 'Sites you visit often show up here. Add site pins your own.' : 'Available when installed in Chrome.';
+      return;
+    }
+    grid.className = 'sites';
+    grid.replaceChildren(...pins.map((p) => tile(p, true)), ...rest.map((s) => tile(s, false)));
+  };
+  const show = () => {
+    el.replaceChildren(h('div', { class: 'whead' }, h('h3', {}, 'Top sites'),
+      h('button', { class: 'linkish', onclick: (e) => { e.stopPropagation(); edit(); } }, 'Add site')), grid);
+    if (hasChrome && chrome.topSites) chrome.topSites.get(draw); else draw([]);
+  };
+  // Adding a site: its address, and in bigger sizes a name for it.
+  const edit = () => {
+    const url = h('input', { placeholder: 'Website, like example.com', maxlength: '300', 'aria-label': 'Website' });
+    const name = h('input', { placeholder: 'Name (optional)', maxlength: '40', 'aria-label': 'Name' });
+    const note = h('div', { class: 'muted' });
+    el.replaceChildren(h('form', { class: 'pin-form', onsubmit: (e) => {
+      e.preventDefault();
+      const added = pinSite(url.value, name.value);
+      if (added === true) { show(); return; }
+      note.textContent = added;
+    } }, h('h3', {}, 'Add a site'), url, size === 'S' ? null : name, note,
+    h('div', { class: 'row' }, h('button', { class: 'chip' }, 'Add'), h('button', { class: 'chip', type: 'button', onclick: show }, 'Cancel'))));
+    url.focus();
+  };
+  show();
+  return el;
+}
+// Returns true, or what's wrong.
+function pinSite(text, title) {
+  let v = text.trim();
+  if (!v) return 'Type a website first.';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(v)) v = `https://${v}`;
+  let u;
+  try { u = new URL(v); } catch { return "That doesn't look like a website."; }
+  if (!/^https?:$/.test(u.protocol) || !u.hostname.includes('.') && u.hostname !== 'localhost') return "That doesn't look like a website.";
+  if (S.pins.some((p) => sameSite(p.url, u.href))) return 'That site is already pinned.';
+  if (S.pins.length >= PIN_MAX) return `You can pin up to ${PIN_MAX} sites.`;
+  S.pins = [...S.pins, { url: u.href, title: title.trim().slice(0, 40) }];
+  save();
+  renderWidgets();
+  return true;
+}
+function unpinSite(s) {
+  const before = S.pins;
+  S.pins = S.pins.filter((p) => p !== s);
+  save();
+  renderWidgets();
+  toast(`${s.title || siteName(s.url)} removed`, () => { S.pins = before; save(); renderWidgets(); });
 }
 
 function recentWidget(size) {
@@ -1112,7 +1249,14 @@ function notesWidget(size) {
   area.value = S.notes;
   const count = h('span', { class: 'muted' });
   const showCount = () => { count.textContent = S.notes.length > NOTES_MAX - 500 ? `${NOTES_MAX - S.notes.length} left` : ''; };
-  area.addEventListener('input', () => { S.notes = area.value; showCount(); save(); });
+  area.addEventListener('input', () => {
+    const was = S.notes;
+    S.notes = area.value; showCount(); save();
+    // Deleting a good chunk at once (or clearing it) offers Undo; typing on puts it away.
+    if (was.length - S.notes.length >= 20) {
+      toast('Deleted from notes', () => { S.notes = was; area.value = was; showCount(); save(); }, 'notes');
+    } else if (toastKind === 'notes') closeToast();
+  });
   showCount();
   return h('div', { class: 'notes-w' }, h('div', { class: 'whead' }, h('h3', {}, 'Notes'), count), area);
 }
@@ -1186,11 +1330,12 @@ function parseICS(text, from, to) {
     else if (name === 'RRULE') ev.rule = Object.fromEntries(value.split(';').map((kv) => kv.split('=')));
     else if (name === 'EXDATE') value.split(',').forEach((v) => { const d = toDate(v, params); if (d) ev.ex.push(d.date.getTime()); });
     else if (name === 'STATUS' && value === 'CANCELLED') ev.cancelled = true;
+    else if (name === 'URL' && /^https?:\/\//i.test(value)) ev.url = value;
   }
   function expand(e) {
     if (e.cancelled) return;
     const len = (e.end || e.start.date) - e.start.date;
-    const add = (d) => { if (d >= from - len && d < to && !e.ex.includes(d.getTime())) out.push({ title: e.title || '(No title)', start: d, end: new Date(+d + len), allDay: e.start.allDay }); };
+    const add = (d) => { if (d >= from - len && d < to && !e.ex.includes(d.getTime())) out.push({ title: e.title || '(No title)', start: d, end: new Date(+d + len), allDay: e.start.allDay, ...(e.url ? { url: e.url } : {}) }); };
     const r = e.rule;
     if (!r) { add(e.start.date); return; }
     const step = +(r.INTERVAL || 1), until = r.UNTIL ? toDate(r.UNTIL, '').date : null;
@@ -1231,15 +1376,17 @@ const calLink = (u) => u.trim().replace(/^webcal:/i, 'https:');
 async function getCalendar() {
   const links = ((await cacheGet('calLinks')) || []).map(calLink).filter(Boolean);
   if (!links.length) return null;
-  const cached = await cacheGet('calCache');
-  if (cached && cached.key === links.join() && Date.now() - cached.at < 15 * 60e3 && cached.events.every((x) => typeof x.start === 'number')) return cached.events.map((x) => ({ ...x, start: new Date(x.start), end: new Date(x.end) }));
+  const cached = await cacheGet('calCache'), key = `v2|${links.join()}`;
+  if (cached && cached.key === key && Date.now() - cached.at < 15 * 60e3 && cached.events.every((x) => typeof x.start === 'number')) return cached.events.map((x) => ({ ...x, start: new Date(x.start), end: new Date(x.end) }));
   const from = new Date(); from.setHours(0, 0, 0, 0);
   const to = new Date(+from + 8 * 864e5);
-  const lists = await Promise.all(links.map(async (u) => parseICS(await (await fetch(u, { cache: 'no-store' })).text(), from, to)));
+  // Each event remembers which service it came from, so a click can open it there.
+  const lists = await Promise.all(links.map(async (u) => parseICS(await (await fetch(u, { cache: 'no-store' })).text(), from, to)
+    .map((x) => ({ ...x, cal: /(^|\.)icloud\.com$/.test(new URL(u).hostname) ? 'icloud' : 'google' }))));
   const now = Date.now();
   const events = lists.flat().filter((x) => +x.end > now || x.allDay).sort((a, b) => a.start - b.start || a.allDay - b.allDay);
   // Chrome storage can't hold dates (they come back empty), so store them as numbers.
-  cacheSet('calCache', { key: links.join(), at: Date.now(), events: events.map((x) => ({ ...x, start: +x.start, end: +x.end })) });
+  cacheSet('calCache', { key, at: Date.now(), events: events.map((x) => ({ ...x, start: +x.start, end: +x.end })) });
   return events;
 }
 
@@ -1253,14 +1400,14 @@ function calendarWidget(size) {
     const diff = Math.round((new Date(d).setHours(0, 0, 0, 0) - t) / 864e5);
     return diff <= 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
   };
-  const row = (e) => h('div', { class: 'cal-ev' }, h('span', { class: 'cal-t' }, time(e)), h('span', { class: 'cal-n' }, e.title));
+  const row = (e) => h('a', { class: 'cal-ev', href: eventLink(e), title: e.title }, h('span', { class: 'cal-t' }, time(e)), h('span', { class: 'cal-n' }, e.title));
   getCalendar().then((events) => {
     if (!events) {
       body.replaceChildren(h('button', { class: 'chip', onclick: (e) => { e.stopPropagation(); openCalendarSettings(); } }, 'Link a calendar'));
       return;
     }
     if (!events.length) { body.textContent = 'Nothing coming up this week.'; return; }
-    if (size === 'S') { body.replaceChildren(h('div', { class: 'muted' }, `Next · ${dayName(events[0].start)}`), h('div', { class: 'cal-next' }, events[0].title), h('div', { class: 'muted' }, time(events[0]))); return; }
+    if (size === 'S') { body.replaceChildren(h('a', { class: 'cal-ev cal-one', href: eventLink(events[0]), title: events[0].title }, h('div', { class: 'muted' }, `Next · ${dayName(events[0].start)}`), h('div', { class: 'cal-next' }, events[0].title), h('div', { class: 'muted' }, time(events[0])))); return; }
     // Medium: the next three events; Large: the coming week. Both grouped by day.
     const groups = new Map();
     for (const e of size === 'M' ? events.slice(0, 3) : events) { const k = dayName(e.start); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
@@ -1268,6 +1415,15 @@ function calendarWidget(size) {
     body.replaceChildren(...[...groups].flatMap(([k, list]) => [h('div', { class: 'cal-day' }, k), ...list.map((e) => row(e))]));
   }).catch(() => { body.textContent = "Couldn't load your calendar. Check the link in Customize."; });
   return h('div', { class: 'cal-w' }, head, body);
+}
+
+// Clicking an event opens it: the event's own link if the calendar gives one, otherwise
+// that day in the calendar it came from.
+function eventLink(e) {
+  if (e.url) return e.url;
+  if (e.cal === 'icloud') return 'https://www.icloud.com/calendar/';
+  const d = e.start;
+  return `https://calendar.google.com/calendar/r/day/${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
 }
 
 function openCalendarSettings() {
@@ -1303,10 +1459,12 @@ const RENDER = { weather: weatherWidget, todo: todoWidget, focus: focusWidget, s
 // ---------- layout and edit mode ----------
 // Widgets are identified by key (each widget appears at most once).
 function removeWidget(k) {
+  const before = { layout: S.layout.map((w) => ({ ...w })), quote: S.quote };
   S.layout = S.layout.filter((w) => w.k !== k);
   if (k === 'quote') S.quote = 'off';
   update();
   renderWidgets();
+  toast(`${WIDGETS[k].name} removed`, () => { Object.assign(S, before); update(); renderWidgets(); });
 }
 function setSize(k, size) {
   const w = S.layout.find((x) => x.k === k);
@@ -1437,9 +1595,13 @@ if (hasChrome) chrome.runtime.onMessage.addListener((msg) => { if (msg.type === 
 
 // ---------- settings panel ----------
 // Opens Customize on one group, with a field in it focused.
+function setPanel(open) {
+  if (open && $('#panelFilter').value) { $('#panelFilter').value = ''; filterPanel(''); }
+  $('#panel').hidden = !open;
+  $('#gear').setAttribute('aria-expanded', String(open));
+}
 function openPanelAt(group, field) {
-  $('#panel').hidden = false;
-  $('#gear').setAttribute('aria-expanded', 'true');
+  setPanel(true);
   $(`#panel .group[data-group="${group}"]`).open = true;
   $(field).scrollIntoView({ block: 'center' });
   $(field).focus();
@@ -1447,7 +1609,8 @@ function openPanelAt(group, field) {
 function openWeatherSettings() {
   openPanelAt('weather', '#city');
 }
-let calCount = 0, googleOn = false;
+let ggChecked = Promise.resolve(); // settles once Glass Google's state is known
+let calCount = 0, googleOn = false, ggState = ''; // ggState: 'off' once turned off in Customize on this computer
 
 // Chrome shows its normal location prompt for the new tab page; no manifest
 // permission (and no install warning) needed. If finding you fails, the city you
@@ -1521,6 +1684,7 @@ function buildPanel() {
   groups.forEach((d) => {
     d.open = open.includes(d.dataset.group);
     d.addEventListener('toggle', () => {
+      if (filterOpen) return; // searching opens sections for a moment; don't remember those
       const now = [...groups].filter((g) => g.open).map((g) => g.dataset.group);
       try { localStorage.setItem('glassTabGroups', JSON.stringify(now)); } catch {}
     });
@@ -1557,20 +1721,207 @@ function buildPanel() {
   $('#units').addEventListener('change', (e) => { S.units = e.target.value; update(); renderWidgets(); });
   $('#useLocation').addEventListener('click', useMyLocation);
   $('#glassGoogle').addEventListener('change', (e) => setGlassGoogle(e.target.checked));
-  if (hasChrome) ggIsOn().then((on) => { $('#glassGoogle').checked = googleOn = on; syncPanel(); });
+  if (hasChrome) ggChecked = Promise.all([ggIsOn(), ggGet()]).then(([on, gg]) => { $('#glassGoogle').checked = googleOn = on; ggState = gg.state || ''; if (on && !S.glassGoogle) { S.glassGoogle = true; save(); } syncPanel(); });
   $('#editLayout').addEventListener('click', () => setEditing(true));
   $('#tidyLayout').addEventListener('click', () => { S.layout = tidyLayout(S.layout.map((w) => w.k)); update(); renderWidgets(); });
 
+  $('#panelFilter').addEventListener('input', (e) => filterPanel(e.target.value));
+  for (const g of groups) {
+    if (RESETS[g.dataset.group]) g.append(h('button', { class: 'linkish reset', onclick: () => resetGroup(g.dataset.group) }, 'Reset to default'));
+  }
+  buildPhotoSettings();
+  $('#exportSettings').addEventListener('click', exportSettings);
+  $('#importSettings').addEventListener('click', () => $('#importFile').click());
+  $('#importFile').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importSettings(f); });
+
   const panel = $('#panel'), gear = $('#gear');
-  const setOpen = (open) => { panel.hidden = !open; gear.setAttribute('aria-expanded', open); };
-  gear.addEventListener('click', () => setOpen(panel.hidden));
+  gear.addEventListener('click', () => setPanel(panel.hidden));
+  // Esc closes whatever is open; / jumps to the search box (unless you're typing).
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    if (editing) setEditing(false);
-    else setOpen(false);
+    if (e.key === 'Escape') {
+      if (editing) setEditing(false);
+      setPanel(false);
+      closeToast();
+      if (!$('#rate').hidden) closeRate('later');
+      if (!$('#ggNudge').hidden) $('#ggNudgeLater').click();
+      return;
+    }
+    const t = e.target;
+    if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && tourStep < 0 && !t.isContentEditable && !t.closest?.('input, textarea, select')) {
+      e.preventDefault();
+      $('#q').focus();
+    }
   });
-  // Tour buttons can open Customize themselves, so a click there doesn't count as outside.
-  document.addEventListener('click', (e) => { if (!panel.hidden && !panel.contains(e.target) && !gear.contains(e.target) && !e.target.closest('#tour')) setOpen(false); });
+  // Tour buttons can open Customize themselves, so a click there doesn't count as outside;
+  // nor does Undo on a reset done from the panel.
+  document.addEventListener('click', (e) => { if (!panel.hidden && !panel.contains(e.target) && !gear.contains(e.target) && !e.target.closest('#tour, #toast')) setPanel(false); });
+}
+
+// Customize search: typing keeps only the sections that match, opens them, and lights up
+// the matching rows. Clearing it puts the sections back the way they were.
+const FILTER_ROWS = 'h3, label, .chips button, .swatches button, .wrow, .note, .linkish, .chip, .help summary';
+let filterOpen = null; // which sections were open before searching
+function filterPanel(text) {
+  const q = text.trim().toLowerCase();
+  const groups = [...document.querySelectorAll('#panel .group')];
+  document.querySelectorAll('#panel .hit').forEach((e) => e.classList.remove('hit'));
+  if (!q) {
+    if (filterOpen) groups.forEach((g) => { g.hidden = false; g.open = filterOpen.includes(g.dataset.group); });
+    filterOpen = null;
+    $('#filterNone').hidden = true;
+    return;
+  }
+  if (!filterOpen) filterOpen = groups.filter((g) => g.open).map((g) => g.dataset.group);
+  const has = (x) => !!x && x.toLowerCase().includes(q);
+  let any = false;
+  for (const g of groups) {
+    const rows = [...g.querySelectorAll(FILTER_ROWS)].filter((r) => has(r.textContent) || has(r.title) || has(r.getAttribute('aria-label')));
+    // Light up the smallest matching row, not the box around it too.
+    rows.filter((r) => !rows.some((o) => o !== r && r.contains(o))).forEach((r) => r.classList.add('hit'));
+    const match = has(g.querySelector('summary span').textContent) || has(g.dataset.words) || rows.length > 0;
+    g.hidden = !match;
+    g.open = match;
+    any ||= match;
+  }
+  $('#filterNone').hidden = any;
+}
+
+// Reset to default, one Customize section at a time. Undo puts it back.
+const RESETS = {
+  wallpaper: ['appearance', 'wallpaper', 'wallpaperLight', 'animated', 'fps', 'wpColors'],
+  glass: ['blur', 'tint', 'liquid', 'solidGlass'],
+  clock: ['clockStyle', 'clockFont', 'clockSize', 'clockColor', 'clockColorLight', 'hour24'],
+  greeting: ['greeting', 'name', 'greetingSize', 'quote'],
+  widgets: ['layout'],
+  weather: ['city', 'units', 'useLocation', 'coords', 'coordsName'],
+  chrome: ['topBar'],
+};
+function resetGroup(g) {
+  const before = JSON.parse(JSON.stringify(Object.fromEntries([...RESETS[g], 'layout', 'quote'].map((k) => [k, S[k]]))));
+  for (const k of RESETS[g]) S[k] = JSON.parse(JSON.stringify(DEFAULTS[k]));
+  // The quote can be a widget, so its setting and the layout move together.
+  if (g === 'greeting') setWidgetOn('quote', S.quote === 'widget');
+  if (g === 'widgets' && S.quote === 'widget') S.quote = 'caption';
+  colorEditorFor = '';
+  update();
+  renderWidgets();
+  const name = $(`#panel .group[data-group="${g}"] summary span`).textContent;
+  toast(`${name} reset`, () => { Object.assign(S, before); colorEditorFor = ''; update(); renderWidgets(); });
+}
+
+// ---------- your own wallpaper ----------
+// The photo is shrunk to the screen's size and saved as a JPEG. Its colors tint the
+// page underneath and Glass Google, like a built-in wallpaper's do.
+async function readPhoto(file) {
+  const img = await createImageBitmap(file);
+  const dpr = devicePixelRatio || 1;
+  const sw = Math.min(3840, screen.width * dpr), sh = Math.min(2400, screen.height * dpr);
+  const scale = Math.min(1, Math.max(sw / img.width, sh / img.height));
+  const canvas = (w, hgt) => Object.assign(document.createElement('canvas'), { width: w, height: hgt });
+  const big = canvas(Math.round(img.width * scale), Math.round(img.height * scale));
+  big.getContext('2d').drawImage(img, 0, 0, big.width, big.height);
+  let data, q = 0.86;
+  do { data = big.toDataURL('image/jpeg', q); q -= 0.12; } while (data.length > 3e6 && q > 0.4);
+  // A small square for the wallpaper picker.
+  const side = Math.min(img.width, img.height), thumb = canvas(64, 64);
+  thumb.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 64, 64);
+  // Colors: the whole picture for the background, three corners for the glows.
+  const px = canvas(3, 3), ctx = px.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, 3, 3);
+  const hex = (x, y) => `#${[...ctx.getImageData(x, y, 1, 1).data.slice(0, 3)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+  const one = canvas(1, 1), c1 = one.getContext('2d', { willReadFrequently: true });
+  c1.drawImage(img, 0, 0, 1, 1);
+  const base = `#${[...c1.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+  img.close();
+  return { data, meta: { thumb: thumb.toDataURL('image/jpeg', 0.7), base, c: [hex(0, 0), hex(1, 1), hex(2, 2)] } };
+}
+async function setPhoto(next, data) {
+  photo = next; photoData = next ? data : '';
+  mirrorPhoto();
+  if (hasChrome) await (next ? chrome.storage.local.set({ photo: { ...next, data } }) : chrome.storage.local.remove('photo'));
+}
+function buildPhotoSettings() {
+  $('#photoPick').addEventListener('click', () => $('#photoFile').click());
+  $('#photoFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const note = $('#photoNote');
+    note.textContent = 'Getting it ready…';
+    try {
+      const { data, meta } = await readPhoto(file);
+      await setPhoto(meta, data);
+      // A new photo shows in both light and dark mode; pick another wallpaper per mode any time.
+      S.wallpaper = S.wallpaperLight = 'photo';
+      note.textContent = 'Your photo is the wallpaper now. It stays on this computer.';
+      swatchMode = '';
+      update();
+    } catch {
+      note.textContent = "Glass Tab couldn't open that file. Try a JPEG or PNG photo.";
+    }
+  });
+  $('#photoRemove').addEventListener('click', async () => {
+    const was = { photo, photoData, wallpaper: S.wallpaper, wallpaperLight: S.wallpaperLight };
+    await setPhoto(null);
+    if (S.wallpaper === 'photo') S.wallpaper = DEFAULTS.wallpaper;
+    if (S.wallpaperLight === 'photo') S.wallpaperLight = DEFAULTS.wallpaperLight;
+    $('#photoNote').textContent = '';
+    swatchMode = '';
+    update();
+    toast('Photo removed', async () => {
+      await setPhoto(was.photo, was.photoData);
+      Object.assign(S, { wallpaper: was.wallpaper, wallpaperLight: was.wallpaperLight });
+      swatchMode = '';
+      update();
+    });
+  });
+}
+// The photo from storage: on a page that had no copy of it, and when another tab changes it.
+async function loadPhoto() {
+  if (!hasChrome) return;
+  const p = (await chrome.storage.local.get('photo')).photo;
+  const data = p?.data || '';
+  if (data === photoData) return;
+  photo = p ? { thumb: p.thumb, base: p.base, c: p.c } : null;
+  photoData = data;
+  mirrorPhoto();
+  swatchMode = '';
+  applyLook();
+  syncPanel();
+}
+
+// ---------- settings backup ----------
+// Export saves the settings as a file; Import reads one back. Sign-ins, calendar links
+// and the photo stay on this computer and aren't in the file.
+function exportSettings() {
+  const day = new Date().toISOString().slice(0, 10);
+  const file = { app: 'Glass Tab', version: hasChrome ? chrome.runtime.getManifest().version : '', saved: new Date().toISOString(), settings: S };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+  h('a', { href: url, download: `glass-tab-settings-${day}.json` }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  $('#backupNote').textContent = 'Settings exported.';
+}
+async function importSettings(file) {
+  const note = $('#backupNote');
+  let got = null;
+  try { got = JSON.parse(await file.text()); } catch {}
+  const s = got?.app === 'Glass Tab' && got.settings;
+  if (!s || typeof s !== 'object' || Array.isArray(s)) { note.textContent = "That isn't a Glass Tab settings file."; return; }
+  // Only known settings, each the same kind as its default, and within the sync limits.
+  const kind = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
+  const clean = Object.fromEntries(Object.entries(s).filter(([k, v]) => k in DEFAULTS
+    && (kind(v) === kind(DEFAULTS[k]) || (k === 'coords' && (v === null || (typeof v?.lat === 'number' && typeof v?.lon === 'number'))))));
+  if (clean.todos) clean.todos = clean.todos.filter((t) => typeof t?.text === 'string').slice(0, TODO_MAX).map((t) => ({ text: t.text.slice(0, 120), done: !!t.done }));
+  if (clean.pins) clean.pins = clean.pins.filter((p) => typeof p?.url === 'string' && /^https?:\/\//.test(p.url)).slice(0, PIN_MAX).map((p) => ({ url: p.url.slice(0, 300), title: String(p.title || '').slice(0, 40) }));
+  if (clean.layout) clean.layout = clean.layout.filter((w) => w && typeof w === 'object');
+  if (clean.notes) clean.notes = clean.notes.slice(0, NOTES_MAX);
+  const before = S;
+  S = migrate(clean);
+  colorEditorFor = '';
+  renderAll();
+  save();
+  note.textContent = 'Settings imported.';
+  toast('Settings imported', () => { S = before; colorEditorFor = ''; renderAll(); save(); note.textContent = ''; });
 }
 
 // Wallpaper and clock color swatches depend on the mode (and the user's own wallpaper
@@ -1579,7 +1930,7 @@ let swatchMode = '';
 const swatchBg = (p) => (p.tones ? `linear-gradient(135deg, ${p.tones.join(', ')})` : `conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`);
 function buildSwatches() {
   const m = mode();
-  const sig = `${m}${JSON.stringify(S.wpColors)}`;
+  const sig = `${m}${JSON.stringify(S.wpColors)}${photo?.thumb.length || 0}`;
   if (sig === swatchMode) return;
   swatchMode = sig;
   const set = modeSet(m);
@@ -1590,7 +1941,10 @@ function buildSwatches() {
       class: custom ? 'custom' : '', style: `background: ${swatchBg(p)}`,
       onclick: () => { S[modeSet().wpKey] = key; update(); },
     });
-  }));
+  }), ...(photo ? [h('button', {
+    'data-key': 'photo', title: 'Your photo', 'aria-label': 'Your photo', class: 'photo',
+    style: `background: center / cover url("${photo.thumb}")`, onclick: () => { S[modeSet().wpKey] = 'photo'; update(); },
+  })] : []));
   $('#clockColors').replaceChildren(...Object.entries(set.colors).map(([key, c]) => h('button', {
     'data-key': key, title: c.name, 'aria-label': `${c.name} clock`,
     style: `background: rgb(${c.rgb})`,
@@ -1617,6 +1971,8 @@ function buildColorEditor() {
 function drawColorEditor() {
   const m = mode(), key = wallpaperKey(m), p = presetFor(m);
   const sig = `${m}:${key}`;
+  // A photo keeps its own colors.
+  $('.colors-box').hidden = key === 'photo';
   $('#wpReset').hidden = !S.wpColors[key];
   if (sig === colorEditorFor) return; // don't rebuild under a picker that's being dragged
   colorEditorFor = sig;
@@ -1689,6 +2045,7 @@ function drawSummaries() {
   set('#sumCalendar', calCount ? `${calCount} linked` : 'Not linked');
   set('#sumWeather', S.useLocation ? S.coordsName || 'Your location' : S.city || 'No city yet');
   set('#sumChrome', `Glass Google ${googleOn ? 'on' : 'off'}`);
+  set('#sumBackup', 'Export or import');
 }
 
 function syncPanel() {
@@ -1704,6 +2061,8 @@ function syncPanel() {
   mark('#appearance', (b) => b.dataset.mode === S.appearance);
   mark('#fonts', (b) => b.dataset.key === S.clockFont);
   drawWidgetRows();
+  $('#photoRemove').hidden = !photo;
+  $('#photoPick').textContent = photo ? 'Choose a different photo' : 'Use your own photo';
   mark('#styles', (b) => b.dataset.style === S.clockStyle);
   mark('#quoteModes', (b) => b.dataset.mode === S.quote);
   mark('#topBar', (b) => b.dataset.bar === S.topBar);
@@ -1742,6 +2101,7 @@ buildPanel();
 renderAll();
 tick();
 startSync();
+loadPhoto();
 
 (async () => {
   focusState = freshFocus(await cacheGet('focus'));
@@ -1753,6 +2113,7 @@ startSync();
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.focus) { focusState = freshFocus(changes.focus.newValue); drawFocus(); }
+    if (area === 'local' && changes.photo) loadPhoto();
     // Another tab changed settings. Ignore the echo of this tab's own recent save.
     if (area === 'sync' && Date.now() - lastSave > 1500) {
       const next = { ...S };
@@ -1843,6 +2204,18 @@ const TOUR_SETUP = {
   tidy() {
     return [h('button', { class: 'chip', onclick: () => { $('#tidyLayout').click(); showTourStep(tourStep); } }, 'Tidy up now')];
   },
+  google() {
+    const status = h('div', { class: 'muted tour-status' });
+    const btn = h('button', { class: 'chip primary', onclick: async () => {
+      status.textContent = 'Chrome will ask you to allow it…';
+      status.textContent = (await setGlassGoogle(true)) ? 'Glass Google is on. Reload any open Google tabs to see it.' : 'Not turned on. You can turn it on any time in Customize › Chrome and Google.';
+      if (googleOn) btn.remove();
+    } }, 'Turn on glass Google');
+    return [btn, status];
+  },
+  photo() {
+    return [h('button', { class: 'chip', onclick: () => { endTour(); openPanelAt('wallpaper', '#photoPick'); } }, 'Choose a photo')];
+  },
 };
 
 // The tour: what each part is, then a quick setup for the widgets that need it.
@@ -1854,8 +2227,9 @@ const TOUR = [
   { el: widgetEl('calendar'), when: () => placed('calendar'), title: 'Calendar', text: 'Link your Google or iCloud calendar to see what\'s coming up. The link stays on this computer. It updates every 15 minutes.', setup: 'calendar' },
   { el: widgetEl('todo'), when: () => placed('todo'), title: 'To-do', text: 'Add a task or two. Click a task later to edit it.', setup: 'todo' },
   { el: '#widgets', title: 'Move and resize', text: 'Press and hold any widget to move it. While editing, the S, M and L buttons change its size and × removes it.' },
-  { el: '#search', title: 'Search', text: `Search Google or type a website here. On any other site, press ${SHORTCUT} to bring up the same glass search bar.` },
-  { el: '#gear', title: 'Customize', text: 'This round button in the corner opens Customize: wallpapers, light or dark, motion, glass, the clock, widgets and more. You can also make your Google searches glass.' },
+  { el: '#search', title: 'Search', text: `Search Google or type a website here. Press / to jump here. On any other site, press ${SHORTCUT} to bring up the same glass search bar.` },
+  { el: '#gear', title: 'Customize', text: 'This round button in the corner opens Customize: wallpapers (or your own photo), light or dark, motion, glass, the clock, widgets and more. The box at the top finds any setting.' },
+  { when: () => !googleOn && ggState !== 'off', title: 'Make Google glass too', get text() { return GG_PITCH(); }, setup: 'google' },
   { el: '#gear', title: 'A seamless top bar', text: "If the top of the page doesn't blend into Chrome's top bar, open Customize and change Top bar under Chrome and Google: Chrome's own if you have no theme, Glass Tab theme if you added ours." },
   { title: "Chrome's footer", text: 'If Chrome shows a bar along the bottom of this page, you can hide it: right-click the bar and choose "Hide footer on New Tab page". The steps are also in Customize under Chrome and Google.' },
   { title: "You're all set", text: 'Make it yours. You can take this tour again any time from Customize.', next: 'Done' },
@@ -1869,11 +2243,14 @@ const syncNames = () => {
 };
 const NEWS = [
   { title: "What's new in Glass Tab", text: 'Glass Tab just updated with a few new things. Want a quick look? It takes 30 seconds.', next: 'Show me', skip: 'Not now' },
-  { el: '#gear', title: 'Customize, tidied up', text: 'Settings now sit in sections you can open and close. Under Wallpaper, you can also change the colors of any wallpaper.' },
+  { el: '#gear', title: 'Customize, tidied up', text: 'Settings sit in sections, and the box at the top finds any of them. Each section can go back to its defaults, and Backup saves your settings to a file.' },
+  { el: '#gear', title: 'Your own wallpaper', text: 'Use a photo of your own as the wallpaper. It stays on this computer, under the same glass.', setup: 'photo' },
   { el: widgetEl('todo'), when: () => placed('todo'), title: 'Sync your to-do list', get text() { return `Show your ${syncNames()} list here. Adding, ticking and editing tasks updates the app too.`; }, setup: 'sync' },
-  { el: widgetEl('sites'), when: () => placed('sites'), title: 'Top sites fills up', text: 'Top sites now uses all the room it has. Make it Large to see up to 12 sites.' },
-  { el: '#widgets', title: 'Tidy up', text: 'Widgets looking scattered? Tidy up lines them up in neat rows. It\'s also in Customize under Widgets.', setup: 'tidy' },
-  { when: () => googleOn, title: 'Cleaner glass Google', text: "Google's results, AI Overviews and suggestions look cleaner in glass, and Google's home page is glass now too." },
+  { el: '#widgets', title: 'A few more things', text: 'Pin your own sites with Add site in Top sites. Press / to search, and Undo shows after you delete something. Calendar events open with a click, Large weather shows the next 24 hours, and Tidy up lines up your widgets.', setup: 'tidy' },
+  // On: what changed. Off: a strong nudge to turn it on, with the button right here.
+  { when: () => googleOn || ggState !== 'off', get title() { return googleOn ? 'Cleaner glass Google' : 'Make Google glass too'; },
+    get text() { return googleOn ? "Google's results, AI Overviews and suggestions look cleaner in glass, and Google's home page is glass now too." : GG_PITCH(); },
+    get setup() { return googleOn ? null : 'google'; } },
 ];
 let activeTour = TOUR;
 const tourSteps = () => activeTour.filter((s) => !s.when || s.when());
@@ -1885,6 +2262,9 @@ function startTour(steps = TOUR) {
   $('#gear').setAttribute('aria-expanded', 'false');
   setEditing(false);
   $('#footerTip').hidden = true;
+  $('#rate').hidden = true;
+  $('#ggNudge').hidden = true;
+  closeToast();
   $('#tour').hidden = false;
   showTourStep(0);
 }
@@ -1966,9 +2346,62 @@ $('#footerTipClose').addEventListener('click', () => {
   $('#footerTip').hidden = true;
   try { localStorage.setItem('glassTabFooterTip', '1'); } catch {}
 });
+
+// ---------- glass Google nudge ----------
+// Glass Google needs Chrome's permission for google.com, which Chrome only asks for after
+// a click, so it can't come on by itself (and each computer asks once). While it's off,
+// a card asks people to turn it on. "Not now" asks again in 3 days. Turning it off in
+// Customize is a choice, so then the card stays away.
+const GG_PITCH = () => (S.glassGoogle
+  ? "You use glass Google on another computer. Turn it on here too, so your searches match this page. It's one click."
+  : "Give your Google searches the same glass look as this page. It's one click, it's private, and you can turn it off any time.");
+const GG_SNOOZE = 3 * 864e5;
+async function maybeNudgeGoogle() {
+  if (!hasChrome) return false;
+  await ggChecked;
+  if (googleOn || ggState === 'off' || tourStep >= 0) return false;
+  if (Date.now() < ((await cacheGet('ggNudge'))?.next || 0)) return false;
+  $('#ggNudgeText').textContent = GG_PITCH();
+  $('#ggNudge').hidden = false;
+  return true;
+}
+$('#ggNudgeOn').addEventListener('click', async () => {
+  if (await setGlassGoogle(true)) toast('Glass Google is on. Reload Google to see it.');
+});
+$('#ggNudgeLater').addEventListener('click', () => {
+  $('#ggNudge').hidden = true;
+  cacheSet('ggNudge', { next: Date.now() + GG_SNOOZE });
+});
+
+// ---------- rating and ideas ----------
+// After two weeks of use, once: a small card asking for a rating on the Chrome Web
+// Store and for ideas. Both are links; nothing is sent from Glass Tab. "Not now" asks
+// again in two weeks, "Never" (or using either link) ends it. The dates stay on this computer.
+const RATE_AFTER = 14 * 864e5;
+let rateState = null;
+async function maybeAskRating() {
+  if (!hasChrome) return;
+  rateState = (await cacheGet('rate')) || null;
+  if (!rateState?.since) { rateState = { since: Date.now() }; cacheSet('rate', rateState); return; }
+  if (rateState.done || Date.now() < (rateState.next || rateState.since + RATE_AFTER)) return;
+  if (tourStep >= 0 || !$('#footerTip').hidden) return; // never over a tour or the footer hint
+  $('#rate').hidden = false;
+}
+function closeRate(how) {
+  $('#rate').hidden = true;
+  rateState = how === 'later' ? { ...rateState, next: Date.now() + RATE_AFTER } : { ...rateState, done: true };
+  cacheSet('rate', rateState);
+}
+$('#rateStore').href = STORE_REVIEWS;
+$('#rateIdea').href = FEEDBACK_URL;
+$('#rateStore').addEventListener('click', () => closeRate('done'));
+$('#rateIdea').addEventListener('click', () => closeRate('done'));
+$('#rateLater').addEventListener('click', () => closeRate('later'));
+$('#rateNever').addEventListener('click', () => closeRate('never'));
+
 try {
   // Wait a moment so the widgets have drawn before the tour measures them.
   if (!localStorage.getItem('glassTabTour')) setTimeout(startTour, 600);
   else if (localStorage.getItem('glassTabNews') !== NEWS_ID) setTimeout(() => startTour(NEWS), 600);
-  else showFooterTip();
+  else { showFooterTip(); maybeNudgeGoogle().then((shown) => { if (!shown) maybeAskRating(); }); }
 } catch {}

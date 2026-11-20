@@ -15,7 +15,7 @@
     </filter>
   </svg>
 
-  <div id="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div><div class="blob b5"></div><div id="waves"></div></div>
+  <div id="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div><div class="blob b5"></div><div id="waves"></div><div id="photo"></div></div>
   <div id="fade" aria-hidden="true"></div>
 
   <main>
@@ -35,6 +35,30 @@
   <div id="footerTip" class="glass" hidden>
     <span>For a cleaner look, <b>right-click the bar below</b> and choose <b>Hide footer on New Tab page</b>.</span>
     <button id="footerTipClose" class="chip">Got it</button>
+  </div>
+
+  <div id="toast" class="glass" hidden role="status" aria-live="polite">
+    <span id="toastText"></span>
+    <button id="toastUndo" class="chip">Undo</button>
+  </div>
+
+  <div id="ggNudge" class="glass nudge" hidden role="dialog" aria-labelledby="ggNudgeTitle">
+    <h2 id="ggNudgeTitle">Make Google glass too</h2>
+    <p id="ggNudgeText"></p>
+    <button id="ggNudgeOn" class="chip primary">Turn on glass Google</button>
+    <div class="rate-btns"><button id="ggNudgeLater" class="linkish">Not now</button></div>
+  </div>
+
+  <div id="rate" class="glass" hidden role="dialog" aria-labelledby="rateTitle">
+    <h2 id="rateTitle">Enjoying Glass Tab?</h2>
+    <p>A rating on the Chrome Web Store helps other people find it.</p>
+    <a id="rateStore" class="chip primary" target="_blank" rel="noopener">Rate Glass Tab</a>
+    <p>What would you like to see in Glass Tab?</p>
+    <a id="rateIdea" class="chip" target="_blank" rel="noopener">Share an idea</a>
+    <div class="rate-btns">
+      <button id="rateLater" class="linkish">Not now</button>
+      <button id="rateNever" class="linkish">Never</button>
+    </div>
   </div>
 
   <div id="tour" hidden role="dialog" aria-modal="true" aria-labelledby="tourTitle">
@@ -58,9 +82,11 @@
 
   <aside id="panel" hidden aria-label="Customize">
     <h2>Customize</h2>
+    <input id="panelFilter" type="search" placeholder="Search settings" aria-label="Search settings" autocomplete="off" spellcheck="false">
+    <p class="note" id="filterNone" hidden>No settings match.</p>
 
     <!-- One group open at a time; each closed row shows what's set. -->
-    <details class="group" data-group="wallpaper">
+    <details class="group" data-group="wallpaper" data-words="background photo picture image upload light dark mode theme motion animation fps colors">
       <summary><span>Wallpaper</span><span class="sum" id="sumWallpaper"></span></summary>
       <h3>Light or dark</h3>
       <div id="appearance" class="chips">
@@ -70,6 +96,12 @@
       </div>
       <h3 class="sub" id="wallpaperTitle">Wallpaper</h3>
       <div id="swatches" class="swatches"></div>
+      <div class="photo-row">
+        <button id="photoPick" class="chip">Use your own photo</button>
+        <button id="photoRemove" class="linkish" hidden>Remove photo</button>
+      </div>
+      <input id="photoFile" type="file" accept="image/*" hidden>
+      <p class="note" id="photoNote" aria-live="polite"></p>
       <details class="help colors-box">
         <summary>Change this wallpaper's colors</summary>
         <div id="wpColors" class="wp-colors"></div>
@@ -85,7 +117,7 @@
       </div>
     </details>
 
-    <details class="group" data-group="glass">
+    <details class="group" data-group="glass" data-words="blur clarity tint transparency refraction frosted">
       <summary><span>Glass</span><span class="sum" id="sumGlass"></span></summary>
       <label class="slider">Clarity <input type="range" id="blur" min="2" max="30" step="1"></label>
       <label class="slider">Tint <input type="range" id="tint" min="4" max="24" step="1"></label>
@@ -93,7 +125,7 @@
       <label class="toggle"><input type="checkbox" id="solid"> Reduce transparency</label>
     </details>
 
-    <details class="group" data-group="clock">
+    <details class="group" data-group="clock" data-words="time font color size 24-hour">
       <summary><span>Clock</span><span class="sum" id="sumClock"></span></summary>
       <div id="styles" class="chips">
         <button data-style="solid">Solid</button>
@@ -108,7 +140,7 @@
       <label class="toggle"><input type="checkbox" id="hour24"> 24-hour time</label>
     </details>
 
-    <details class="group" data-group="greeting">
+    <details class="group" data-group="greeting" data-words="name hello quote">
       <summary><span>Greeting and quote</span><span class="sum" id="sumGreeting"></span></summary>
       <label class="toggle"><input type="checkbox" id="greetingOn"> Show greeting</label>
       <label class="field">Your name <input id="name" placeholder="Optional" maxlength="30"></label>
@@ -121,7 +153,7 @@
       </div>
     </details>
 
-    <details class="group" data-group="widgets">
+    <details class="group" data-group="widgets" data-words="layout tidy move resize size">
       <summary><span>Widgets</span><span class="sum" id="sumWidgets"></span></summary>
       <div id="widgetRows"></div>
       <div class="row two">
@@ -131,7 +163,7 @@
       <p class="note">Tidy up lines your widgets up in neat blocks.</p>
     </details>
 
-    <details class="group" data-group="todo">
+    <details class="group" data-group="todo" data-words="tasks todoist microsoft google sync">
       <summary><span>To-do list</span><span class="sum" id="sumTodo"></span></summary>
       <p class="note">Keep your tasks here, or show a list from an app you already use. Ticking, editing and adding tasks updates that app too.</p>
       <div id="todoSource" class="chips" tabindex="-1">
@@ -156,7 +188,7 @@
       <p class="note" id="syncNote" aria-live="polite"></p>
     </details>
 
-    <details class="group" data-group="calendar">
+    <details class="group" data-group="calendar" data-words="events ical icloud google">
       <summary><span>Calendar</span><span class="sum" id="sumCalendar"></span></summary>
       <textarea id="calLinks" rows="2" placeholder="Paste your calendar's iCal link" aria-label="Calendar links, one per line"></textarea>
       <button id="calSave" class="chip wide">Link calendar</button>
@@ -170,7 +202,7 @@
       </details>
     </details>
 
-    <details class="group" data-group="weather">
+    <details class="group" data-group="weather" data-words="city location units temperature forecast celsius fahrenheit">
       <summary><span>Weather</span><span class="sum" id="sumWeather"></span></summary>
       <label class="field">City <input id="city" placeholder="London, ON" maxlength="60"></label>
       <button id="useLocation" class="chip wide">Use my location</button>
@@ -181,7 +213,7 @@
       <p class="note credit">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0). Town names by <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a>.</p>
     </details>
 
-    <details class="group" data-group="chrome">
+    <details class="group" data-group="chrome" data-words="google search footer top bar theme">
       <summary><span>Chrome and Google</span><span class="sum" id="sumChrome"></span></summary>
       <label class="toggle"><input type="checkbox" id="glassGoogle"> Glass Google search results</label>
       <p class="note" id="googleNote">Works on google.com in light and dark mode. Chrome will ask to let Glass Tab change google.com. Reload Google after turning it on.</p>
@@ -193,6 +225,17 @@
       <p class="note">Blends the page into Chrome's top bar. Pick Glass Tab theme only if you installed one of the Glass Tab toolbar themes.</p>
       <h3 class="sub">Chrome's footer</h3>
       <p class="note">Chrome adds a bar along the bottom of extension new tabs. To hide it, right-click that bar and choose <b>Hide footer on New Tab page</b>.</p>
+    </details>
+
+    <details class="group" data-group="backup" data-words="export import file save restore copy">
+      <summary><span>Backup</span><span class="sum" id="sumBackup"></span></summary>
+      <p class="note">Save your settings to a file, or load them from one, for example on another computer. To-do sign-ins, calendar links and your photo aren't in the file.</p>
+      <div class="row two">
+        <button id="exportSettings" class="chip">Export</button>
+        <button id="importSettings" class="chip">Import</button>
+      </div>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+      <p class="note" id="backupNote" aria-live="polite"></p>
     </details>
 
     <section class="panel-end">

@@ -25,9 +25,9 @@ Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass T
 If the dashboard says it can't submit, click **Why can't I submit?** at the top. It lists the boxes that are empty.
 
 **Current version:** 1.0.5, zip `store/glass-tab-1.0.5.zip`.
-**Since the last listing update:** the Description gained two lines (colors, Todoist), and Privacy
-gained the Todoist/Google/Microsoft permissions and Authentication information. Both are already
-written into the blocks below.
+**Since the last listing update:** for 1.0.5 the Description gained lines for your own photo,
+pinned sites, the 24-hour forecast, Undo, settings search, Reset and Backup. No permissions were
+added, so **Privacy** doesn't change. Both are already written into the blocks below.
 
 ---
 
@@ -54,18 +54,25 @@ A clock like your lock screen
 
 Wallpapers that move
 • Curated wallpapers for light and dark mode, including layered waves, and you can change their colors
+• Or use a photo of your own. It stays on your computer
 • Gentle motion at 15, 30, 60 or 120 fps, or keep it still
 • Follows your system's light or dark mode automatically
 
 Widgets that fit your day
-• Weather, Calendar (Google or iCloud), To-do, Notes, Countdown, Focus timer, Top sites and Recently closed tabs
+• Weather with the next 24 hours, Calendar (Google or iCloud), To-do, Notes, Countdown, Focus timer, Top sites and Recently closed tabs
+• Pin your own sites to Top sites, and open calendar events with a click
 • Pick a size for each one, then press and hold to move them around
 • Keep your to-do list in Glass Tab, or show your Todoist list
+• Deleted something by mistake? Undo
 • A short setup tour on your first new tab
 
 Glass everywhere you search
 • Press ⌘⇧K (Ctrl+Shift+K) on any site for a glass search bar that also finds your open tabs
 • Optional: make Google search results glass to match
+• Press / on a new tab to jump to search
+
+Easy to set up
+• Search your settings, reset any section, and back them up to a file
 
 Private by design
 • No account, no ads, no tracking. Your settings and notes stay in Chrome.
