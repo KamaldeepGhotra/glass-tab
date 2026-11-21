@@ -417,9 +417,26 @@ function modeSet(m = mode()) {
     ? { mode: 'light', presets: LIGHT_PRESETS, wpKey: 'wallpaperLight', colors: LIGHT_CLOCK_COLORS, colorKey: 'clockColorLight' }
     : { mode: 'dark', presets: PRESETS, wpKey: 'wallpaper', colors: CLOCK_COLORS, colorKey: 'clockColor' };
 }
-// The clock color for a mode: a preset, or one the user added.
+// "Match wallpaper": the most colorful of the wallpaper's colors, lifted toward white in
+// dark mode and deepened toward ink in light mode, so the clock stays readable.
+function matchRgb(m) {
+  const p = presetFor(m);
+  const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const vivid = p.c.map(rgbOf).sort((a, b) => (Math.max(...b) - Math.min(...b)) - (Math.max(...a) - Math.min(...a)))[0];
+  // Start at a gentle mix, then go further only if the color is still hard to read.
+  const light = m === 'light', to = light ? [29, 29, 31] : [255, 255, 255];
+  const lum = ([r, g, b]) => 0.299 * r + 0.587 * g + 0.114 * b;
+  let mix = vivid;
+  for (let amount = light ? 0.45 : 0.5; amount <= 0.9; amount += 0.05) {
+    mix = vivid.map((v, i) => Math.round(v + (to[i] - v) * amount));
+    if (light ? lum(mix) <= 110 : lum(mix) >= 150) break;
+  }
+  return mix.join(', ');
+}
+// The clock color for a mode: a preset, one the user added, or matched to the wallpaper.
 function clockRgb(m) {
   const set = modeSet(m), key = S[set.colorKey];
+  if (key === 'match') return matchRgb(m);
   if (HEX.test(key)) return hexRgb(key);
   return (set.colors[key] || Object.values(set.colors)[0]).rgb;
 }
@@ -1870,6 +1887,7 @@ function buildPanel() {
   bind('#hour24', 'hour24', 'checked');
   bind('#blur', 'blur', 'value', Number);
   bind('#speed', 'speed', 'value', Number);
+  $('#clockMatch button').addEventListener('click', () => { S[modeSet().colorKey] = 'match'; update(); });
   bind('#tint', 'tint', 'value', Number);
   bind('#size', 'clockSize', 'value', Number);
   bind('#greetingOn', 'greeting', 'checked');
@@ -2249,6 +2267,7 @@ function syncPanel() {
   const mark = (sel, active) => document.querySelectorAll(`${sel} button`).forEach((b) => b.classList.toggle('on', active(b)));
   mark('#swatches', (b) => b.dataset.key === S[set.wpKey]);
   mark('#clockColors', (b) => b.dataset.key === S[set.colorKey]);
+  mark('#clockMatch', (b) => b.dataset.key === S[set.colorKey]);
   mark('#appearance', (b) => b.dataset.mode === S.appearance);
   mark('#fonts', (b) => b.dataset.key === S.clockFont);
   drawWidgetRows();

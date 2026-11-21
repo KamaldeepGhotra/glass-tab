@@ -397,6 +397,7 @@ main { zoom: var(--ui-scale, 1); height: 100%; display: flex; flex-direction: co
 .photo-row .linkish { margin-left: 0; }
 #photoNote:empty { display: none; }
 .swatches button.photo { box-shadow: inset 0 0 0 1px rgba(var(--ink), .2); }
+#clockMatch { margin-bottom: 8px; }
 /* "+" for your own clock color: a dashed circle over Chrome's color picker */
 .swatches .add-color { position: relative; box-sizing: border-box; width: 24px; height: 24px; border-radius: 50%; border: 1.5px dashed rgba(var(--ink), .5); opacity: .8; cursor: pointer; }
 /* The + is two bars drawn from the exact middle, so it's centered at any size. */
