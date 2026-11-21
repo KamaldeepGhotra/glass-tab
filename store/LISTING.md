@@ -30,8 +30,9 @@ silk, northern lights, lava), your own clock colors and the motion speed. Paste 
 Description below into **Store listing**. No permissions were added, so the **Privacy** tab in
 the dashboard doesn't change; the privacy policy page on the website gained one line about
 remembering Google's light or dark mode.
-**Screenshots need redoing for 1.0.7:** the store images still show the old wallpapers. Retake them
-on the new defaults (Northern lights in dark mode, Silk in light) before or with this release.
+**New screenshots for 1.0.7:** all five and the promo tile were retaken on the new wallpapers. In
+the dashboard, delete the old screenshots and upload the five in `store/` in order, then replace
+the small promo tile.
 
 ---
 
@@ -96,7 +97,7 @@ Private by design
 | --- | --- |
 | Store icon (128×128) | `extension/icons/icon128.png` |
 | Global promo video | leave empty |
-| Screenshots | `1-hero-dark.png`, `2-light.png`, `3-customize.png`, `4-setup-tour.png`, `5-edit-layout.png` |
+| Screenshots | `1-hero-dark.png`, `2-light.png`, `3-customize.png`, `4-lava.png`, `5-edit-layout.png` |
 | Small promo tile (440×280) | `promo-440x280.png` |
 | Marquee promo tile | leave empty |
 
