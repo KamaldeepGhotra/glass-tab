@@ -39,7 +39,7 @@ After editing files, click the reload icon on the Glass Tab card in `chrome://ex
 - The focus timer is shared by all tabs and finishes in the background worker, which shows a notification.
 - The calendar widget reads Google Calendar or iCloud through the calendar's iCal link (Google's "Secret address in iCal format", or an iCloud public calendar link). No sign-in is needed. The link stays in local storage on this computer and isn't synced. Chrome asks for access to calendar.google.com and icloud.com only when a link is saved.
 - **Glass Google search results** is opt-in (settings, Glass section). Turning it on asks for access to google.com and registers `google.js` and `google.css` for search pages; turning it off removes both. It follows Google's own light or dark mode, using the matching wallpaper, and only runs on google.com. Google's class names change occasionally, so check these styles after big Google redesigns.
-- A setup guide (`welcome.html`) opens on first install. Set `THEME_STORE_URLS` in `welcome.js` once the themes are published.
+- Nothing opens on install: the first new tab shows a short tour instead, which can be skipped.
 - Clock fonts are system fonts, so nothing is downloaded. Some look best on macOS.
 
 ## License

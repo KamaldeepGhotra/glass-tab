@@ -4,9 +4,7 @@ importScripts('gg.js');
 // Nothing is sent from the extension. Keep in step with FEEDBACK_URL in newtab.js.
 chrome.runtime.setUninstallURL('https://github.com/KamaldeepGhotra/glass-tab/issues/new');
 
-// Show the setup guide once, right after install.
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
-  if (reason === 'install') chrome.tabs.create({ url: 'welcome.html' });
   // Chrome keeps the copy of a registered content script from when it was registered,
   // so after an update re-register Glass Google to pick up the new google.js/css.
   if (reason === 'update' && (await chrome.permissions.contains({ origins: GG.origins }))) {
@@ -29,7 +27,7 @@ chrome.permissions.onRemoved.addListener(async ({ origins = [] }) => {
   if ((await ggGet()).state === 'on') await ggSet({ state: 'off' });
 });
 
-// One-time reminder: if the user said no to glass Google search when they installed,
+// One-time reminder: if the user said no to glass Google search in the first-run tour,
 // the first time they search Google we offer it once from the toolbar icon. We can't
 // draw on Google's page itself without that very permission.
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {

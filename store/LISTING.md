@@ -24,11 +24,14 @@ Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass T
 
 If the dashboard says it can't submit, click **Why can't I submit?** at the top. It lists the boxes that are empty.
 
-**Current version:** 1.0.6, zip `store/glass-tab-1.0.6.zip`. 1.0.6 is a bug fix (Glass Google in AI Mode),
-so the listing and Privacy stay as they are.
-**Since the last listing update:** for 1.0.5 the Description gained lines for your own photo,
-pinned sites, the 24-hour forecast, Undo, settings search, Reset and Backup. No permissions were
-added, so **Privacy** doesn't change. Both are already written into the blocks below.
+**Current version:** 1.0.7, zip `store/glass-tab-1.0.7.zip`.
+**Since the last listing update:** for 1.0.7 the Description gained the new wallpapers (dunes,
+silk, northern lights, lava), your own clock colors and the motion speed. Paste the new
+Description below into **Store listing**. No permissions were added, so the **Privacy** tab in
+the dashboard doesn't change; the privacy policy page on the website gained one line about
+remembering Google's light or dark mode.
+**Screenshots need redoing for 1.0.7:** the store images still show the old wallpapers. Retake them
+on the new defaults (Northern lights in dark mode, Silk in light) before or with this release.
 
 ---
 
@@ -50,13 +53,13 @@ Title and Summary come from the package automatically.
 Glass Tab turns every new tab into a calm, liquid-glass home screen.
 
 A clock like your lock screen
-• Clear glass, frosted glass or solid, in seven fonts and colors picked to match the wallpapers
+• Clear glass, frosted glass or solid, in seven fonts and colors picked to match the wallpapers, or add colors of your own
 • A greeting and a daily quote, both optional
 
 Wallpapers that move
-• Curated wallpapers for light and dark mode, including layered waves, and you can change their colors
+• Curated wallpapers for light and dark mode: drifting dunes, silk ribbons, northern lights, lava, layered waves and soft glows, and you can change their colors
 • Or use a photo of your own. It stays on your computer
-• Gentle motion at 15, 30, 60 or 120 fps, or keep it still
+• Gentle motion at 15, 30, 60 or 120 fps at the speed you like, or keep it still
 • Follows your system's light or dark mode automatically
 
 Widgets that fit your day

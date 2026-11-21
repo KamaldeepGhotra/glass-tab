@@ -7,13 +7,8 @@
   <script src="boot.js"></script>
 </head>
 <body>
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <filter id="liquid-filter" x="0" y="0" width="100%" height="100%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="4" result="noise"/>
-      <feGaussianBlur in="noise" stdDeviation="2" result="soft"/>
-      <feDisplacementMap in="SourceGraphic" in2="soft" scale="60" xChannelSelector="R" yChannelSelector="G"/>
-    </filter>
-  </svg>
+  <!-- Liquid glass filters, one per surface, made to its size by newtab.js -->
+  <svg id="lqDefs" width="0" height="0" style="position:absolute" aria-hidden="true"></svg>
 
   <div id="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div><div class="blob b5"></div><div id="waves"></div><div id="photo"></div></div>
   <div id="fade" aria-hidden="true"></div>
@@ -35,6 +30,12 @@
   <div id="footerTip" class="glass" hidden>
     <span>For a cleaner look, <b>right-click the bar below</b> and choose <b>Hide footer on New Tab page</b>.</span>
     <button id="footerTipClose" class="chip">Got it</button>
+  </div>
+
+  <div id="newsTip" class="glass" hidden role="status">
+    <span>New wallpapers to try: Dunes, Silk, Northern lights and Lava.</span>
+    <button id="newsTipLook" class="chip">Take a look</button>
+    <button id="newsTipClose" class="linkish" aria-label="Dismiss">×</button>
   </div>
 
   <div id="toast" class="glass" hidden role="status" aria-live="polite">
@@ -86,7 +87,7 @@
     <p class="note" id="filterNone" hidden>No settings match.</p>
 
     <!-- One group open at a time; each closed row shows what's set. -->
-    <details class="group" data-group="wallpaper" data-words="background photo picture image upload light dark mode theme motion animation fps colors">
+    <details class="group" data-group="wallpaper" data-words="background photo picture image upload light dark mode theme motion animation fps speed colors">
       <summary><span>Wallpaper</span><span class="sum" id="sumWallpaper"></span></summary>
       <h3>Light or dark</h3>
       <div id="appearance" class="chips">
@@ -101,11 +102,11 @@
       </div>
       <input id="photoFile" type="file" accept="image/*" hidden>
       <p class="note" id="photoNote" aria-live="polite"></p>
-      <details class="help colors-box">
-        <summary>Change this wallpaper's colors</summary>
+      <div class="colors-box">
+        <h3 class="sub">Colors <span class="muted" id="wpColorsFor"></span></h3>
         <div id="wpColors" class="wp-colors"></div>
         <button id="wpReset" class="linkish">Back to the original colors</button>
-      </details>
+      </div>
       <h3 class="sub">Motion</h3>
       <div id="motion" class="chips">
         <button data-fps="0">Still</button>
@@ -114,6 +115,8 @@
         <button data-fps="60">60 fps</button>
         <button data-fps="120">120 fps</button>
       </div>
+      <label class="slider">Speed <input type="range" id="speed" min="0.25" max="3" step="0.25" aria-describedby="speedNote"></label>
+      <p class="note" id="speedNote">How fast the wallpaper moves: left is calmer, right is livelier.</p>
     </details>
 
     <details class="group" data-group="glass" data-words="blur clarity tint transparency refraction frosted">
@@ -121,6 +124,7 @@
       <label class="slider">Clarity <input type="range" id="blur" min="2" max="30" step="1"></label>
       <label class="slider">Tint <input type="range" id="tint" min="4" max="24" step="1"></label>
       <label class="toggle"><input type="checkbox" id="liquid"> Liquid refraction</label>
+      <p class="note">Bends the wallpaper at the edges of the search bar, and of widgets too while Motion is Still.</p>
       <label class="toggle"><input type="checkbox" id="solid"> Reduce transparency</label>
     </details>
 
@@ -239,7 +243,7 @@
 
     <section class="panel-end">
       <button id="replayTour" class="chip wide">Take the tour</button>
-      <a id="guide" href="welcome.html" class="muted">Setup guide</a> · <a href="https://kamaldeepghotra.github.io/glass-tab/privacy.html" target="_blank" rel="noopener" class="muted">Privacy</a>
+      <a href="https://kamaldeepghotra.github.io/glass-tab/privacy.html" target="_blank" rel="noopener" class="muted">Privacy</a>
     </section>
   </aside>
 

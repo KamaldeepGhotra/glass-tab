@@ -42,6 +42,11 @@ html.glass-google .gt-fadeout.gt-blurfade {
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 45%);
   mask-image: linear-gradient(to bottom, transparent, #000 45%);
 }
+/* The AI Overview's loading glow, cut down to a rim (google.js finds it). */
+html.glass-google .gt-rim {
+  padding: 2px;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
 html.glass-google .gt-mask {
   -webkit-mask-image: linear-gradient(#000 var(--gt-mask-a), transparent var(--gt-mask-b), transparent var(--gt-mask-c), #000 var(--gt-mask-c));
   mask-image: linear-gradient(#000 var(--gt-mask-a), transparent var(--gt-mask-b), transparent var(--gt-mask-c), #000 var(--gt-mask-c));

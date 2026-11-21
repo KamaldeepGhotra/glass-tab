@@ -3,78 +3,137 @@
 function waves(name, tones) {
   return { name, tones, base: tones[tones.length - 1], c: [tones[1], tones[2], tones[3]] };
 }
+// Dunes are waves laid flat: sand bands, darkest at the bottom, the sky color at the top.
+const dunes = (name, tones) => ({ ...waves(name, tones), scene: 'dunes' });
+// Silk and Northern lights are drawn from a background color and three colors, like the
+// glow wallpapers (so the same color picker works); Lava is a glow wallpaper that moves more.
+const scene = (name, kind, base, c) => ({ name, scene: kind, base, c });
 
 // Curated presets per mode, so every wallpaper blends into the toolbar.
 const PRESETS = {
   ink:      waves('Ink',    ['#6c6c72', '#57575c', '#45454a', '#36363a', '#29292c', '#1e1e20', '#141415']),
   tide:     waves('Tide',   ['#4b7bb0', '#3d6797', '#30547d', '#244264', '#19314c', '#112337', '#0b1726']),
   velvet:   waves('Velvet', ['#e0488a', '#c23a76', '#9f2d61', '#7c214c', '#5a1738', '#3a0f25', '#200815']),
+  dunes:    dunes('Dunes',  ['#c07a4a', '#9a5a36', '#764227', '#55301d', '#3a2115', '#24150e', '#140c08']),
+  silk:     scene('Silk', 'silk', '#0b0614', ['#ff5ea8', '#7a3cff', '#20d4c4']),
+  lights:   scene('Northern lights', 'lights', '#030914', ['#3de6aa', '#8a6bff', '#2f8cff']),
+  lava:     scene('Lava', 'lava', '#14051d', ['#ff4f7b', '#ff9a3c', '#9646ff']),
   aurora:   { name: 'Aurora',   base: '#05080d', c: ['#12a4b8', '#6a30d8', '#1db87f'] },
-  midnight: { name: 'Midnight', base: '#04060d', c: ['#2350d8', '#0b6fc4', '#4a22a8'] },
-  rose:     { name: 'Rose',     base: '#12050b', c: ['#ff3d8b', '#b0125a', '#ff7ab6'] },
   sunset:   { name: 'Sunset',   base: '#0e0707', c: ['#ff6a3d', '#c4195e', '#ffad42'] },
-  lagoon:   { name: 'Lagoon',   base: '#03090c', c: ['#00b6c9', '#0a5cff', '#00d39c'] },
   neon:     { name: 'Neon',     base: '#07050f', c: ['#ff2e93', '#6200ff', '#00d9ff'] },
-  graphite: { name: 'Graphite', base: '#0a0a0c', c: ['#454955', '#25272d', '#666b78'] },
 };
 const LIGHT_PRESETS = {
   paper:   waves('Paper', ['#4a4a4a', '#6e6e6e', '#909090', '#b0b0b0', '#cbcbcb', '#e2e2e2', '#f6f6f6']),
   lake:    waves('Lake',  ['#3f5f7f', '#557593', '#6b8ba8', '#86a3bd', '#a1bad1', '#bccfe2', '#d9e5f1']),
   petal:   waves('Petal', ['#e97fab', '#ef96ba', '#f3acc9', '#f7c2d7', '#fad5e4', '#fce5ef', '#fef3f8']),
+  dunes:   dunes('Dunes', ['#b9824b', '#cf9f66', '#dfbb88', '#ecd3ac', '#f3dfc0', '#f8ead6', '#fcf4ea']),
+  silk:    scene('Silk', 'silk', '#f7f3fb', ['#ff8fbd', '#9d84ff', '#5fcfe0']),
+  lights:  scene('Northern lights', 'lights', '#eef4fb', ['#2fc79a', '#8b78ff', '#4a9cff']),
+  lava:    scene('Lava', 'lava', '#fdf0f3', ['#ff8fae', '#ffb877', '#b796ff']),
   mist:    { name: 'Mist',    base: '#edf1f9', c: ['#86aaff', '#c39bff', '#73d9e4'] },
-  blossom: { name: 'Blossom', base: '#fdeef5', c: ['#ff8cc0', '#ffb0d4', '#ff9fc8'] },
-  sorbet:  { name: 'Sorbet',  base: '#fdf2ec', c: ['#ff9470', '#ffc561', '#ff7aa5'] },
-  coast:   { name: 'Coast',   base: '#eaf6f8', c: ['#4fd0df', '#74a3ff', '#76e6bb'] },
-  citrus:  { name: 'Citrus',  base: '#f9f8ea', c: ['#ffd24f', '#9fe063', '#ffaa5e'] },
   prism:   { name: 'Prism',   base: '#f4f2fb', c: ['#ff8ab5', '#78acff', '#8eeec4'] },
-  pearl:   { name: 'Pearl',   base: '#f2f2f4', c: ['#d4d7e1', '#e8e0d6', '#cdd7e6'] },
 };
-// Wallpapers that were retired, mapped to the closest current one.
-const RETIRED = { ember: 'sunset', dusk: 'rose', forest: 'lagoon', dawn: 'sorbet', sky: 'coast', lilac: 'prism', sage: 'coast' };
+// Wallpapers that were retired, mapped to the closest current one. Dark and light keys
+// never share a name, so one list covers both modes.
+const RETIRED = {
+  ember: 'sunset', dusk: 'neon', forest: 'aurora', dawn: 'prism', sky: 'mist', lilac: 'prism', sage: 'mist',
+  midnight: 'aurora', rose: 'neon', lagoon: 'aurora', graphite: 'ink',
+  blossom: 'petal', sorbet: 'prism', coast: 'mist', citrus: 'prism', pearl: 'paper',
+};
 
-// Draws a wave wallpaper as an SVG data URL. Each band casts a soft shadow on the one
-// below it and has a faint light rim, like layered paper.
-const waveCache = {};
-function waveParts(tones) {
-  const n = tones.length, span = 1900 / n;
+// Layered wallpapers (waves, dunes, silk, northern lights) are drawn as SVG: a background
+// color plus layers. Still, they're one picture; moving, each layer is its own picture
+// that only slides (never redrawn), so motion is cheap for the GPU.
+const isDark = (hex) => parseInt(hex.slice(1, 3), 16) * 0.3 + parseInt(hex.slice(3, 5), 16) * 0.59 + parseInt(hex.slice(5, 7), 16) * 0.11 < 110;
+const svgOf = (defs, inner, wrap = '') => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice"><defs>${defs}</defs>`
+  + (wrap ? `<g transform="${wrap}">${inner}</g>` : inner) + '</svg>';
+// Each band casts a soft shadow on the one below it and has a faint light rim, like
+// layered paper. Waves run diagonally; dunes lie flat, with longer, lazier swells.
+function bandParts(tones, flat) {
+  const n = tones.length, span = (flat ? 1000 : 1900) / n;
   // On dark wallpapers shadows need to be deeper and rims fainter to read the same.
-  const dark = parseInt(tones[n - 1].slice(1, 3), 16) < 100;
+  const dark = isDark(tones[n - 1]);
   const rim = dark ? '.09' : '.22', shade = dark ? '.6' : '.32';
-  const bands = [`<rect x="-800" y="-900" width="3200" height="2800" fill="${tones[0]}"/>`];
+  const layers = [];
   for (let i = 1; i < n; i++) {
-    const y0 = 1450 - i * span, ph = i * 1.7;
+    const y0 = flat ? 1080 - i * span : 1450 - i * span, ph = i * 1.7;
     const pts = [];
     for (let x = -800; x <= 2400; x += 12) {
-      const y = y0 + 90 * Math.sin(x / 110 + ph) + 30 * Math.sin(x / 47 + ph * 2.3);
+      const y = flat
+        ? y0 + 55 * Math.sin(x / 230 + ph) + 22 * Math.sin(x / 91 + ph * 2.3) + 8 * Math.sin(x / 37 + ph)
+        : y0 + 90 * Math.sin(x / 110 + ph) + 30 * Math.sin(x / 47 + ph * 2.3);
       pts.push(`${x} ${y.toFixed(1)}`);
     }
-    bands.push(`<path d="M-800 -900L${pts.join('L')}L2400 -900Z" fill="${tones[i]}" filter="url(#s)" stroke="rgba(255,255,255,${rim})" stroke-width="3"/>`);
+    layers.push(`<path d="M-800 -900L${pts.join('L')}L2400 -900Z" fill="${tones[i]}" filter="url(#s)" stroke="rgba(255,255,255,${rim})" stroke-width="3"/>`);
   }
-  const svg = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">`
-    + `<defs><filter id="s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="-8" dy="16" stdDeviation="16" flood-color="#000" flood-opacity="${shade}"/></filter></defs>`
-    + `<g transform="rotate(30 800 500)">${inner}</g></svg>`;
-  return { bands, svg };
+  const defs = `<filter id="s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="${flat ? 0 : -8}" dy="16" stdDeviation="16" flood-color="#000" flood-opacity="${shade}"/></filter>`;
+  return { bg: tones[0], defs, layers, wrap: flat ? '' : 'rotate(30 800 500)' };
 }
-function waveURL(tones) {
-  const key = tones.join();
+// Silk: wide ribbons that ripple across the page, each blending from one color to the next.
+function silkParts(base, c) {
+  const dark = isDark(base), pairs = [[0, 1], [1, 2], [2, 0], [0, 2]];
+  const defs = pairs.map(([a, b], i) => `<linearGradient id="g${i}" x1="0" x2="1"><stop offset="0" stop-color="${c[a]}"/><stop offset="1" stop-color="${c[b]}"/></linearGradient>`).join('');
+  const layers = pairs.map((_, i) => {
+    const top = [], bot = [];
+    for (let x = -500; x <= 2100; x += 20) {
+      const y = 120 + i * 210 + 120 * Math.sin(x / 330 + i * 1.7) + 30 * Math.sin(x / 140 + i);
+      top.push(`${x} ${y.toFixed(1)}`);
+      bot.unshift(`${x} ${(y + 130 + 70 * Math.sin(x / 210 + i * 2.1)).toFixed(1)}`);
+    }
+    return `<path d="M${top.join('L')}L${bot.join('L')}Z" fill="url(#g${i})" opacity="${dark ? 0.8 : 0.7}"/>`;
+  });
+  return { bg: base, defs, layers, blend: dark ? 'screen' : 'multiply' };
+}
+// Northern lights: soft curtains of light, brightest along their wavy lower edge and
+// fading upward, in three colors.
+function lightsParts(base, c) {
+  const dark = isDark(base);
+  const defs = '<filter id="b" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="14"/></filter>'
+    + c.map((col, i) => `<linearGradient id="l${i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity="0"/><stop offset=".72" stop-color="${col}" stop-opacity="${dark ? 0.5 : 0.35}"/><stop offset=".93" stop-color="${col}" stop-opacity="${dark ? 0.95 : 0.7}"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient>`).join('');
+  const layers = c.map((_, i) => {
+    let rays = '';
+    for (let x = -400; x <= 2000; x += 14) {
+      const b = (Math.sin(x / 70 + i * 2) + Math.sin(x / 29 + i) + 2) / 4;
+      const bottom = 560 + i * 80 + 120 * Math.sin(x / 260 + i * 1.3);
+      const len = 300 + 280 * b;
+      rays += `<rect x="${x}" y="${(bottom - len).toFixed(0)}" width="16" height="${len.toFixed(0)}" fill="url(#l${i})" opacity="${(0.35 + 0.65 * b).toFixed(2)}"/>`;
+    }
+    return `<g filter="url(#b)">${rays}</g>`;
+  });
+  return { bg: base, defs, layers, blend: dark ? 'screen' : 'multiply' };
+}
+function sceneParts(p) {
+  if (p.tones) return bandParts(p.tones, p.scene === 'dunes');
+  if (p.scene === 'silk') return silkParts(p.base, p.c);
+  if (p.scene === 'lights') return lightsParts(p.base, p.c);
+  return null; // glow wallpapers (and Lava) are the blurred blobs
+}
+const layered = (p) => !!(p.tones || p.scene === 'silk' || p.scene === 'lights');
+// The still picture, as an SVG data URL (also Glass Google's background and the swatch).
+const waveCache = {};
+function waveURL(p) {
+  const key = JSON.stringify([p.tones, p.scene, p.base, p.c]);
   if (waveCache[key]) return waveCache[key];
   // Dragging a color picker makes a new picture per step; keep only recent ones.
   const keys = Object.keys(waveCache);
   if (keys.length > 12) delete waveCache[keys[0]];
-  const { bands, svg } = waveParts(tones);
-  return (waveCache[key] = `url("data:image/svg+xml,${encodeURIComponent(svg(bands.join('')))}")`);
+  const { bg, defs, layers, wrap, blend } = sceneParts(p);
+  const inner = `<rect x="-800" y="-900" width="3200" height="2800" fill="${bg}"/>`
+    + (blend ? `<g style="mix-blend-mode:${blend}">${layers.join('')}</g>` : layers.join(''));
+  return (waveCache[key] = `url("data:image/svg+xml,${encodeURIComponent(svgOf(defs, inner, wrap))}")`);
 }
-// Moving waves: each band is its own layer that slides gently along its curve, at its
-// own pace. Layers are only moved (never redrawn), so this is cheap for the GPU.
-let waveKey = '';
-function drawWaves(tones) {
-  const key = tones ? tones.join() : '';
+// Moving: each layer is its own picture that stepMotion slides at its own pace.
+let waveKey = '', sceneKind = '', lava = false;
+function drawWaves(p) {
+  const key = p ? JSON.stringify([p.tones, p.scene, p.base, p.c]) : '';
   if (key === waveKey) return;
   waveKey = key;
-  if (!tones) { $('#waves').replaceChildren(); return; }
-  const { bands, svg } = waveParts(tones);
-  $('#waves').innerHTML = bands.slice(1).map((b) => svg(b)).join('');
-  $('#waves').style.background = tones[0];
+  sceneKind = p ? p.scene || 'waves' : '';
+  if (!p) { $('#waves').replaceChildren(); return; }
+  const { bg, defs, layers, wrap, blend } = sceneParts(p);
+  $('#waves').innerHTML = layers.map((l) => svgOf(defs, l, wrap)).join('');
+  $('#waves').style.background = bg;
+  $('#waves').style.setProperty('--layer-blend', blend || 'normal');
 }
 
 // System fonts only, so nothing is downloaded. Mac fonts first, Windows fallbacks after.
@@ -112,6 +171,12 @@ const LIGHT_CLOCK_COLORS = {
   navy:   { name: 'Navy',     rgb: '34, 62, 124' },
   grape:  { name: 'Grape',    rgb: '92, 52, 156' },
 };
+
+// Clock colors the user adds are kept as hex ('#rrggbb'); a clock color key is either a
+// preset's name or one of those.
+const HEX = /^#[0-9a-f]{6}$/i;
+const MAX_CLOCK_CUSTOM = 8;
+const hexRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ');
 
 // Sizes: S = 1 cell, M = 2 cells wide, L = 2 x 2 cells, XL = 2 x 3 cells.
 // A widget only offers sizes where it shows something different:
@@ -204,7 +269,7 @@ const QUOTES = [
 
 const DEFAULTS = {
   appearance: 'auto', // 'auto' follows the system / Chrome setting
-  wallpaper: 'aurora', wallpaperLight: 'mist', animated: true, fps: 60, topBar: 'chrome',
+  wallpaper: 'lights', wallpaperLight: 'silk', animated: true, fps: 60, speed: 1, topBar: 'chrome',
   blur: 18, tint: 10, liquid: true, solidGlass: false,
   clockStyle: 'clear', clockFont: 'tall', clockSize: 140, clockColor: 'white', clockColorLight: 'ink', hour24: false,
   name: '', greeting: true, greetingSize: 22,
@@ -212,7 +277,8 @@ const DEFAULTS = {
   layout: [{ k: 'todo', size: 'L' }, { k: 'weather', size: 'M' }, { k: 'sites', size: 'M' }], // = tidyLayout of these three
   city: '', units: 'c', useLocation: false, coords: null, coordsName: '',
   todos: [], focusMinutes: 30, notes: '', countdown: { title: '', date: '' },
-  wpColors: {}, // wallpaper key -> { from, to } for waves, { base, c: [3] } for glows
+  wpColors: {}, // wallpaper key -> { from, to } for waves, { base, c: [3] } for glows (see wpColorKey)
+  clockCustom: { dark: [], light: [] }, // clock colors the user added, per mode, as '#rrggbb'
   pins: [], // sites the user pinned to Top sites: [{ url, title }]
   glassGoogle: false, // turned on on any computer; Chrome's permission for it is per computer
 };
@@ -237,8 +303,18 @@ function migrate(raw) {
     if (s.widgets.includes('quote')) { s.quote = 'widget'; s.layout.push({ k: 'quote', size: 'M' }); }
   }
   delete s.widgets;
+  // The defaults changed in 1.0.7. People still on the old ones move to the new ones once;
+  // anyone who picked another wallpaper keeps theirs.
+  if (!s.defaults107) {
+    if (s.wallpaper === 'aurora') s.wallpaper = DEFAULTS.wallpaper;
+    if (s.wallpaperLight === 'mist') s.wallpaperLight = DEFAULTS.wallpaperLight;
+    s.defaults107 = true;
+  }
   for (const k of ['wallpaper', 'wallpaperLight']) if (RETIRED[s[k]]) s[k] = RETIRED[s[k]];
   const merged = { ...DEFAULTS, ...s };
+  const hexes = (a) => (Array.isArray(a) ? a.filter((x) => HEX.test(x)).slice(0, MAX_CLOCK_CUSTOM) : []);
+  merged.clockCustom = { dark: hexes(merged.clockCustom?.dark), light: hexes(merged.clockCustom?.light) };
+  merged.speed = Math.min(3, Math.max(0.25, Number(merged.speed) || 1));
   merged.layout = merged.layout.filter((w) => WIDGETS[w.k] && WIDGETS[w.k].sizes.includes(w.size));
   return merged;
 }
@@ -338,8 +414,14 @@ function mode() {
 // Per-mode choices: wallpaper list, saved wallpaper key, clock colors, saved clock color key.
 function modeSet(m = mode()) {
   return m === 'light'
-    ? { presets: LIGHT_PRESETS, wpKey: 'wallpaperLight', colors: LIGHT_CLOCK_COLORS, colorKey: 'clockColorLight' }
-    : { presets: PRESETS, wpKey: 'wallpaper', colors: CLOCK_COLORS, colorKey: 'clockColor' };
+    ? { mode: 'light', presets: LIGHT_PRESETS, wpKey: 'wallpaperLight', colors: LIGHT_CLOCK_COLORS, colorKey: 'clockColorLight' }
+    : { mode: 'dark', presets: PRESETS, wpKey: 'wallpaper', colors: CLOCK_COLORS, colorKey: 'clockColor' };
+}
+// The clock color for a mode: a preset, or one the user added.
+function clockRgb(m) {
+  const set = modeSet(m), key = S[set.colorKey];
+  if (HEX.test(key)) return hexRgb(key);
+  return (set.colors[key] || Object.values(set.colors)[0]).rgb;
 }
 // The saved wallpaper key for a mode (the first one if the saved key is unknown).
 function wallpaperKey(m) {
@@ -354,13 +436,16 @@ function ramp(from, to, n) {
   const a = rgb(from), b = rgb(to);
   return Array.from({ length: n }, (_, i) => `#${a.map((v, j) => Math.round(v + (b[j] - v) * i / (n - 1)).toString(16).padStart(2, '0')).join('')}`);
 }
+// Where a wallpaper's own colors are saved. Wallpapers in both modes (like Dunes) keep
+// separate colors per mode, so light mode's are saved as "light:dunes".
+const wpColorKey = (m, key) => (m === 'light' && PRESETS[key] ? `light:${key}` : key);
 // A wallpaper with the user's own colors, if they changed them in Customize.
 function presetOf(m, key) {
   if (key === 'photo' && photo) return { name: 'Your photo', base: photo.base, c: photo.c, photo: true };
-  const p = modeSet(m).presets[key], o = S.wpColors?.[key];
+  const p = modeSet(m).presets[key], o = S.wpColors?.[wpColorKey(m, key)];
   if (!o) return p;
-  if (p.tones && o.from && o.to) return waves(p.name, ramp(o.from, o.to, p.tones.length));
-  if (!p.tones && o.base && o.c?.length === 3) return { name: p.name, base: o.base, c: o.c };
+  if (p.tones && o.from && o.to) return { ...waves(p.name, ramp(o.from, o.to, p.tones.length)), scene: p.scene };
+  if (!p.tones && o.base && o.c?.length === 3) return { ...p, base: o.base, c: o.c };
   return p;
 }
 function presetFor(m) {
@@ -377,16 +462,17 @@ function varsFor(m) {
   const weight = S.clockStyle !== 'solid' && f.weight < 400 ? 400 : f.weight;
   return {
     '--base': p.base, '--c1': p.c[0], '--c2': p.c[1], '--c3': p.c[2], '--bar': (TOP_BAR[S.topBar] || TOP_BAR.chrome)[m],
-    '--wave': p.tones ? waveURL(p.tones) : 'none', '--blob-display': p.tones || p.photo ? 'none' : 'block', '--photo-display': p.photo ? 'block' : 'none',
+    '--wave': layered(p) ? waveURL(p) : 'none', '--blob-display': layered(p) || p.photo ? 'none' : 'block', '--photo-display': p.photo ? 'block' : 'none',
     '--blur': `${S.blur}px`, '--tint': String(S.tint / 100),
     '--clock-font': f.stack, '--clock-weight': String(weight), '--clock-size': `${S.clockSize}px`, '--greeting-size': `${S.greetingSize}px`,
-    '--clock-rgb': (set.colors[S[set.colorKey]] || Object.values(set.colors)[0]).rgb,
+    '--clock-rgb': clockRgb(m),
   };
 }
 
 function applyLook() {
   const m = mode();
-  const base = [S.animated && 'animated', S.liquid && 'liquid', S.solidGlass && 'solid'].filter(Boolean).join(' ');
+  // "animated" means the wallpaper is really moving: off with Reduce motion too, so widgets get liquid glass.
+  const base = [moving() && 'animated', S.liquid && 'liquid', S.solidGlass && 'solid'].filter(Boolean).join(' ');
   const root = document.documentElement;
   for (const [k, v] of Object.entries(varsFor(m))) root.style.setProperty(k, v);
   // The photo is large, so it's set only when it changes.
@@ -394,7 +480,8 @@ function applyLook() {
   root.className = `${base}${m === 'light' ? ' light' : ''}`;
   $('#clock').className = `${S.clockStyle}${(FONTS[S.clockFont] || FONTS.tall).variable ? ' rim' : ''}`;
   const p = presetFor(m);
-  drawWaves(moving() && p.tones ? p.tones : null);
+  drawWaves(moving() && layered(p) ? p : null);
+  lava = p.scene === 'lava';
   updateMotion();
   // boot.js applies this before the next page draws, for whichever mode is active then.
   try {
@@ -402,7 +489,7 @@ function applyLook() {
   } catch {}
   // Shared with the Glass Google content script, which picks the mode Google is in.
   const pd = presetFor('dark'), pl = presetFor('light');
-  const wave = (p) => (p.tones ? waveURL(p.tones) : null);
+  const wave = (p) => (layered(p) ? waveURL(p) : null);
   const look = { dark: { base: pd.base, c: pd.c, wave: wave(pd) }, light: { base: pl.base, c: pl.c, wave: wave(pl) }, blur: S.blur, tint: S.tint, solid: S.solidGlass };
   if (hasChrome && JSON.stringify(look) !== lastLook) { lastLook = JSON.stringify(look); chrome.storage.local.set({ look }); }
 }
@@ -429,36 +516,62 @@ function scheduleMotion(last = performance.now()) {
   };
   motionTimer = setTimeout(() => requestAnimationFrame(frame), Math.max(0, due - performance.now() - 6));
 }
+// The wallpaper's own clock, in seconds. It runs at the speed the user picked, and only
+// moves forward by the time since the last frame, so changing the speed never makes the
+// wallpaper jump (and a long sleep doesn't either).
+let motionClock = performance.now() / 1000, lastStep = 0;
 function stepMotion(now) {
-  const t = now / 1000;
-  // Blobs drift out and back; wave bands slide back and forth along their curves,
-  // each at its own pace (seconds per sweep, start offset).
-  for (const [el, sec] of blobs) {
-    const d = (1 - Math.cos(2 * Math.PI * t / sec)) / 2;
+  if (lastStep) motionClock += Math.min(now - lastStep, 250) / 1000 * S.speed;
+  lastStep = now;
+  const t = motionClock, TAU = 2 * Math.PI;
+  // Blobs drift out and back. Lava's wander much further, each on its own loop, so they
+  // melt into one another and pull apart.
+  blobs.forEach(([el, sec], i) => {
+    if (lava) {
+      const a = TAU * t / (sec * 0.8);
+      el.style.transform = `translate(${14 * Math.sin(a + i)}vmax, ${10 * Math.sin(a * 1.37 + i * 2)}vmax) scale(${1 + 0.22 * Math.sin(a * 0.71 + i)})`;
+      return;
+    }
+    const d = (1 - Math.cos(TAU * t / sec)) / 2;
     el.style.transform = `translate(${6 * d}vmax, ${-4 * d}vmax) scale(${1 + 0.12 * d})`;
-  }
+  });
+  // Layers slide back and forth, each at its own pace (seconds per sweep, start offset).
   document.querySelectorAll('#waves svg').forEach((el, i) => {
-    const [sec, start] = (i + 1) % 3 === 0 ? [20, 9] : (i + 1) % 2 === 0 ? [16, 5] : [12, 0];
-    const v = -Math.cos(Math.PI * (t + start) / sec);
-    el.style.transform = `translate(${4.3 * v}vmax, ${2.5 * v}vmax)`;
+    if (sceneKind === 'dunes') {
+      // Far bands (near the top) drift slower, like distant hills.
+      const v = Math.sin(TAU * t / (16 + i * 3) + i);
+      el.style.transform = `translateX(${(7 - i * 0.7) * v}vmax)`;
+    } else if (sceneKind === 'silk') {
+      const sec = 22 + i * 5;
+      el.style.transform = `translate(${7 * Math.sin(TAU * t / sec + i)}vmax, ${2.5 * Math.sin(TAU * t / (sec * 1.4) + i * 2)}vmax)`;
+    } else if (sceneKind === 'lights') {
+      // Curtains sway sideways and slowly stretch and shrink, like they're breathing.
+      const sec = 16 + i * 5;
+      el.style.transform = `translateX(${4 * Math.sin(TAU * t / sec + i * 2)}vmax) scaleY(${1 + 0.12 * Math.sin(TAU * t / (sec * 0.7) + i)})`;
+    } else {
+      const [sec, start] = (i + 1) % 3 === 0 ? [20, 9] : (i + 1) % 2 === 0 ? [16, 5] : [12, 0];
+      const v = -Math.cos(Math.PI * (t + start) / sec);
+      el.style.transform = `translate(${4.3 * v}vmax, ${2.5 * v}vmax)`;
+    }
   });
 }
 function updateMotion() {
   clearTimeout(motionTimer);
   motionTimer = 0;
+  lastStep = 0;
   if (moving()) scheduleMotion();
   else for (const [el] of blobs) el.style.transform = '';
 }
 let lastLook = '', photoShown = null;
 
 // ---------- glass Google search (helpers in gg.js) ----------
-async function setGlassGoogle(on) {
+async function setGlassGoogle(on, opts) {
   const box = $('#glassGoogle');
   if (!hasChrome) { box.checked = false; return; }
   try {
     if (on) {
       // ggTurnOn shows Chrome's prompt, so it must run straight from the click.
-      if (await ggTurnOn()) $('#googleNote').textContent = 'On. Reload any open Google search tabs to see it.';
+      if (await ggTurnOn(opts)) $('#googleNote').textContent = 'On. Reload any open Google search tabs to see it.';
     } else {
       await ggTurnOff();
     }
@@ -1486,6 +1599,7 @@ function sizePicker(k, current, long) {
 function buildWidget({ k, size }) {
   const el = RENDER[k](size);
   el.classList.add('widget', 'glass', `size-${size}`);
+  liquid(el);
   el.dataset.k = k;
   const ctl = h('div', { class: 'wctl' });
   if (WIDGETS[k].sizes.length > 1) ctl.append(sizePicker(k, size));
@@ -1494,12 +1608,55 @@ function buildWidget({ k, size }) {
   return el;
 }
 
+// Liquid glass: each .liquid surface gets an SVG filter made to its size. It bends the
+// backdrop near the rounded edges, like light through the rim of a thick lens, and leaves
+// the middle straight. Red, green and blue bend by slightly different amounts, which gives
+// the rim a faint rainbow. Chrome applies SVG filters to backdrop-filter. Widgets only get
+// it while motion is off (see newtab.css): with a moving wallpaper behind every widget, a 4K
+// screen drops to 30 frames a second.
+const lqObserver = new ResizeObserver((entries) => entries.forEach((e) => lqBuild(e.target)));
+function liquid(el) { lqObserver.observe(el); }
+function lqBuild(el) {
+  // Widgets are rebuilt often: stop watching ones that left the page.
+  if (!el.isConnected) { lqObserver.unobserve(el); return; }
+  const w = el.offsetWidth, ht = el.offsetHeight;
+  if (!w || !ht) return;
+  const r = Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0, w / 2, ht / 2);
+  // Surfaces of the same size share a filter, so widgets redrawn often don't add new ones.
+  const id = `lq-${w}-${ht}-${Math.round(r)}`;
+  el.style.setProperty('--lq', `url(#${id})`);
+  if (document.getElementById(id)) return;
+  // How far in from the edge the bending reaches, and how strong it is.
+  const band = Math.min(w, ht) * 0.22, scale = Math.min(w, ht) * 0.45;
+  // The map: red runs left to right and blue top to bottom (the direction of the shift),
+  // under a blurred mid-gray shape that means "no shift" everywhere but the rim.
+  const map = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${ht}">`
+    + '<defs><linearGradient id="x" x1="1" x2="0"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#f00"/></linearGradient>'
+    + '<linearGradient id="y" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#00f"/></linearGradient></defs>'
+    + `<rect width="${w}" height="${ht}" fill="url(#x)"/>`
+    + `<rect width="${w}" height="${ht}" fill="url(#y)" style="mix-blend-mode:screen"/>`
+    + `<rect x="${band / 2}" y="${band / 2}" width="${w - band}" height="${ht - band}" rx="${Math.max(0, r - band / 2)}" fill="#808080" style="filter:blur(${band / 3}px)"/></svg>`;
+  const pass = (s, keep) => `<feDisplacementMap in="SourceGraphic" in2="map" scale="${s}" xChannelSelector="R" yChannelSelector="B"/>`
+    + `<feColorMatrix type="matrix" values="${keep.map((k, i) => [0, 1, 2, 3].map((j) => (j === i ? k : 0)).join(' ') + ' 0').join(' ')} 0 0 0 1 0" result="c${keep.indexOf(1)}"/>`;
+  const f = document.getElementById('lqDefs').appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'filter'));
+  f.id = id;
+  f.setAttribute('filterUnits', 'userSpaceOnUse');
+  f.setAttribute('color-interpolation-filters', 'sRGB');
+  for (const [a, v] of Object.entries({ x: 0, y: 0, width: w, height: ht })) f.setAttribute(a, v);
+  f.innerHTML = `<feImage href="data:image/svg+xml,${encodeURIComponent(map)}" x="0" y="0" width="${w}" height="${ht}" result="map"/>`
+    + pass(scale, [1, 0, 0]) + pass(scale * 0.93, [0, 1, 0]) + pass(scale * 0.86, [0, 0, 1])
+    + '<feBlend in="c0" in2="c1" mode="screen" result="rg"/><feBlend in="rg" in2="c2" mode="screen"/>';
+}
+liquid($('#search'));
+
 // Dragging uses pointer events (not HTML drag and drop): the widget follows the
 // pointer and the others move out of the way live, like the iOS home screen.
 let drag = null;
 
 function place(e) {
-  drag.el.style.transform = `translate(${e.clientX - drag.offX - drag.base.left}px, ${e.clientY - drag.offY - drag.base.top}px) scale(1.04)`;
+  // Widgets sit in <main>, which is zoomed on big screens; a transform there is zoomed too.
+  const z = drag.el.currentCSSZoom || 1;
+  drag.el.style.transform = `translate(${(e.clientX - drag.offX - drag.base.left) / z}px, ${(e.clientY - drag.offY - drag.base.top) / z}px) scale(1.04)`;
 }
 function startDrag(el, e) {
   const base = el.getBoundingClientRect();
@@ -1712,6 +1869,7 @@ function buildPanel() {
   bind('#solid', 'solidGlass', 'checked');
   bind('#hour24', 'hour24', 'checked');
   bind('#blur', 'blur', 'value', Number);
+  bind('#speed', 'speed', 'value', Number);
   bind('#tint', 'tint', 'value', Number);
   bind('#size', 'clockSize', 'value', Number);
   bind('#greetingOn', 'greeting', 'checked');
@@ -1752,9 +1910,9 @@ function buildPanel() {
       $('#q').focus();
     }
   });
-  // Tour buttons can open Customize themselves, so a click there doesn't count as outside;
+  // Tour and news buttons can open Customize themselves, so a click there doesn't count as outside;
   // nor does Undo on a reset done from the panel.
-  document.addEventListener('click', (e) => { if (!panel.hidden && !panel.contains(e.target) && !gear.contains(e.target) && !e.target.closest('#tour, #toast')) setPanel(false); });
+  document.addEventListener('click', (e) => { if (!panel.hidden && !panel.contains(e.target) && !gear.contains(e.target) && !e.target.closest('#tour, #toast, #newsTip')) setPanel(false); });
 }
 
 // Customize search: typing keeps only the sections that match, opens them, and lights up
@@ -1788,9 +1946,9 @@ function filterPanel(text) {
 
 // Reset to default, one Customize section at a time. Undo puts it back.
 const RESETS = {
-  wallpaper: ['appearance', 'wallpaper', 'wallpaperLight', 'animated', 'fps', 'wpColors'],
+  wallpaper: ['appearance', 'wallpaper', 'wallpaperLight', 'animated', 'fps', 'speed', 'wpColors'],
   glass: ['blur', 'tint', 'liquid', 'solidGlass'],
-  clock: ['clockStyle', 'clockFont', 'clockSize', 'clockColor', 'clockColorLight', 'hour24'],
+  clock: ['clockStyle', 'clockFont', 'clockSize', 'clockColor', 'clockColorLight', 'clockCustom', 'hour24'],
   greeting: ['greeting', 'name', 'greetingSize', 'quote'],
   widgets: ['layout'],
   weather: ['city', 'units', 'useLocation', 'coords', 'coordsName'],
@@ -1934,29 +2092,54 @@ async function importSettings(file) {
 // Wallpaper and clock color swatches depend on the mode (and the user's own wallpaper
 // colors), so rebuild them when those change.
 let swatchMode = '';
-const swatchBg = (p) => (p.tones ? `linear-gradient(135deg, ${p.tones.join(', ')})` : `conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`);
+const swatchBg = (p) => (layered(p) ? `center / cover ${waveURL(p)}` : `conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`);
 function buildSwatches() {
   const m = mode();
-  const sig = `${m}${JSON.stringify(S.wpColors)}${photo?.thumb.length || 0}`;
+  const sig = `${m}${JSON.stringify(S.wpColors)}${photo?.thumb.length || 0}${JSON.stringify(S.clockCustom)}`;
   if (sig === swatchMode) return;
   swatchMode = sig;
   const set = modeSet(m);
   $('#swatches').replaceChildren(...Object.keys(set.presets).map((key) => {
-    const p = presetOf(m, key), custom = !!S.wpColors?.[key];
+    const p = presetOf(m, key), custom = !!S.wpColors?.[wpColorKey(m, key)];
     return h('button', {
       'data-key': key, title: custom ? `${p.name} (your colors)` : p.name, 'aria-label': p.name,
       class: custom ? 'custom' : '', style: `background: ${swatchBg(p)}`,
       onclick: () => { S[modeSet().wpKey] = key; update(); },
     });
-  }), ...(photo ? [h('button', {
+  }), ...(photo ? [h('span', { class: 'swatch-wrap' }, h('button', {
     'data-key': 'photo', title: 'Your photo', 'aria-label': 'Your photo', class: 'photo',
     style: `background: center / cover url("${photo.thumb}")`, onclick: () => { S[modeSet().wpKey] = 'photo'; update(); },
-  }), h('button', { class: 'photo-x', title: 'Remove your photo', 'aria-label': 'Remove your photo', onclick: (e) => { e.stopPropagation(); removePhoto(); } }, '×')] : []));
+  }), h('button', { class: 'swatch-x', title: 'Remove your photo', 'aria-label': 'Remove your photo', onclick: (e) => { e.stopPropagation(); removePhoto(); } }))] : []));
   $('#clockColors').replaceChildren(...Object.entries(set.colors).map(([key, c]) => h('button', {
     'data-key': key, title: c.name, 'aria-label': `${c.name} clock`,
     style: `background: rgb(${c.rgb})`,
     onclick: () => { S[modeSet().colorKey] = key; update(); },
-  })));
+  })), ...S.clockCustom[set.mode].map((hex) => h('span', { class: 'swatch-wrap' }, h('button', {
+    'data-key': hex, title: `Your color ${hex}`, 'aria-label': `Your color ${hex} clock`, class: 'own',
+    style: `background: ${hex}`,
+    onclick: () => { S[modeSet().colorKey] = hex; update(); },
+  }), h('button', { class: 'swatch-x', title: 'Remove this color', 'aria-label': `Remove your color ${hex}`, onclick: (e) => { e.stopPropagation(); removeClockColor(set.mode, hex); } }))),
+  ...(S.clockCustom[set.mode].length < MAX_CLOCK_CUSTOM ? [addClockColor(set)] : []));
+}
+// "+" opens Chrome's color picker. The clock follows the picker while it's open; closing
+// it keeps the color as one of yours and picks it.
+function addClockColor(set) {
+  const input = h('input', { type: 'color', value: `#${clockRgb(set.mode).split(', ').map((v) => (+v).toString(16).padStart(2, '0')).join('')}`, 'aria-label': 'Add your own clock color' });
+  input.addEventListener('input', () => document.documentElement.style.setProperty('--clock-rgb', hexRgb(input.value)));
+  input.addEventListener('change', () => {
+    const hex = input.value.toLowerCase(), list = S.clockCustom[set.mode];
+    if (!list.includes(hex)) S.clockCustom = { ...S.clockCustom, [set.mode]: [...list, hex].slice(-MAX_CLOCK_CUSTOM) };
+    S[set.colorKey] = hex;
+    update();
+  });
+  return h('label', { class: 'add-color', title: 'Add your own color' }, input);
+}
+function removeClockColor(m, hex) {
+  const before = { list: S.clockCustom[m], key: S[modeSet(m).colorKey] };
+  S.clockCustom = { ...S.clockCustom, [m]: before.list.filter((x) => x !== hex) };
+  if (before.key === hex) S[modeSet(m).colorKey] = DEFAULTS[modeSet(m).colorKey];
+  update();
+  toast('Color removed', () => { S.clockCustom = { ...S.clockCustom, [m]: before.list }; S[modeSet(m).colorKey] = before.key; update(); });
 }
 
 // Customize > Wallpaper > colors: a wave wallpaper has a front and a back color (the
@@ -1969,7 +2152,7 @@ function currentColors(p) {
 }
 function buildColorEditor() {
   $('#wpReset').addEventListener('click', () => {
-    const { [wallpaperKey(mode())]: _, ...rest } = S.wpColors;
+    const { [wpColorKey(mode(), wallpaperKey(mode()))]: _, ...rest } = S.wpColors;
     S.wpColors = rest;
     colorEditorFor = '';
     update();
@@ -1980,7 +2163,8 @@ function drawColorEditor() {
   const sig = `${m}:${key}`;
   // A photo keeps its own colors.
   $('.colors-box').hidden = key === 'photo';
-  $('#wpReset').hidden = !S.wpColors[key];
+  $('#wpColorsFor').textContent = key === 'photo' ? '' : `· ${presetOf(m, key).name}`;
+  $('#wpReset').hidden = !S.wpColors[wpColorKey(m, key)];
   if (sig === colorEditorFor) return; // don't rebuild under a picker that's being dragged
   colorEditorFor = sig;
   const now = currentColors(p);
@@ -1990,7 +2174,7 @@ function drawColorEditor() {
     input.addEventListener('input', () => {
       const next = currentColors(presetFor(m));
       if (typeof f === 'number') next.c[f] = input.value; else next[f] = input.value;
-      S.wpColors = { ...S.wpColors, [key]: next };
+      S.wpColors = { ...S.wpColors, [wpColorKey(m, key)]: next };
       update();
     });
     return h('label', {}, input, label);
@@ -2041,9 +2225,9 @@ function drawSyncSettings() {
 // What each closed group in Customize shows on its row.
 function drawSummaries() {
   const m = mode(), p = presetFor(m);
-  const fps = S.animated ? `${S.fps} fps` : 'still';
+  const fps = S.animated ? `${S.fps} fps${S.speed !== 1 ? ` · ${S.speed}× speed` : ''}` : 'still';
   const set = (id, text) => { $(id).textContent = text; };
-  set('#sumWallpaper', `${p.name}${S.wpColors[wallpaperKey(m)] ? ' (yours)' : ''} · ${S.appearance === 'auto' ? 'auto' : S.appearance} · ${fps}`);
+  set('#sumWallpaper', `${p.name}${S.wpColors[wpColorKey(m, wallpaperKey(m))] ? ' (yours)' : ''} · ${S.appearance === 'auto' ? 'auto' : S.appearance} · ${fps}`);
   set('#sumGlass', S.solidGlass ? 'Less transparent' : S.liquid ? 'Liquid' : 'Frosted');
   set('#sumClock', `${(FONTS[S.clockFont] || FONTS.tall).name} · ${{ solid: 'solid', clear: 'clear glass', frost: 'frosted' }[S.clockStyle]}`);
   set('#sumGreeting', `${S.greeting ? 'Greeting on' : 'Greeting off'} · quote ${{ off: 'off', caption: 'under clock', widget: 'widget' }[S.quote]}`);
@@ -2077,6 +2261,7 @@ function syncPanel() {
   $('#solid').checked = S.solidGlass;
   $('#hour24').checked = S.hour24;
   $('#blur').value = S.blur;
+  $('#speed').value = S.speed;
   $('#tint').value = S.tint;
   $('#size').value = S.clockSize;
   $('#greetingOn').checked = S.greeting;
@@ -2204,30 +2389,21 @@ const TOUR_SETUP = {
     const sync = h('button', { class: 'linkish', onclick: () => { endTour(); openPanelAt('todo', '#todoSource'); } }, 'Use Todoist, Microsoft To Do or Google Tasks instead');
     return [task, status, sync];
   },
-  sync() {
-    return [h('button', { class: 'chip', onclick: () => { endTour(); openPanelAt('todo', '#todoSource'); } }, 'Set it up')];
-  },
-  tidy() {
-    return [h('button', { class: 'chip', onclick: () => { $('#tidyLayout').click(); showTourStep(tourStep); } }, 'Tidy up now')];
-  },
   google() {
     const status = h('div', { class: 'muted tour-status' });
     const btn = h('button', { class: 'chip primary', onclick: async () => {
       status.textContent = 'Chrome will ask you to allow it…';
-      status.textContent = (await setGlassGoogle(true)) ? 'Glass Google is on. Reload any open Google tabs to see it.' : 'Not turned on. You can turn it on any time in Customize › Chrome and Google.';
+      status.textContent = (await setGlassGoogle(true, { remind: true })) ? 'Glass Google is on. Reload any open Google tabs to see it.' : 'Not turned on. You can turn it on any time in Customize › Chrome and Google.';
       if (googleOn) btn.remove();
     } }, 'Turn on glass Google');
     return [btn, status];
-  },
-  photo() {
-    return [h('button', { class: 'chip', onclick: () => { endTour(); openPanelAt('wallpaper', '#photoPick'); } }, 'Choose a photo')];
   },
 };
 
 // The tour: what each part is, then a quick setup for the widgets that need it.
 // Steps with "when" only appear if that widget is on.
 const TOUR = [
-  { title: 'Welcome to Glass Tab', text: "Let's set things up. It takes about a minute, and you can skip any step.", next: "Let's go" },
+  { title: 'Welcome to Glass Tab', text: "Let's set things up. It takes about a minute, and you can skip any step.", next: "Let's go", skip: 'Skip setup' },
   { el: '#widgets', title: 'Pick your widgets', text: 'Choose what you want on your new tab. You can change this any time.', setup: 'pick' },
   { el: widgetEl('weather'), when: () => placed('weather'), title: 'Weather', text: 'Type your city, or let Glass Tab use your location.', setup: 'weather' },
   { el: widgetEl('calendar'), when: () => placed('calendar'), title: 'Calendar', text: 'Link your Google or iCloud calendar to see what\'s coming up. The link stays on this computer. It updates every 15 minutes.', setup: 'calendar' },
@@ -2241,24 +2417,9 @@ const TOUR = [
   { title: "Chrome's footer", text: 'If Chrome shows a bar along the bottom of this page, you can hide it: right-click the bar and choose "Hide footer on New Tab page". The steps are also in Customize under Chrome and Google.' },
   { title: "You're all set", text: 'Make it yours. You can take this tour again any time from Customize.', next: 'Done' },
 ];
-// What's new: the same kind of walk-through, offered once after an update to people
-// who already took the setup tour. Raise NEWS_ID when the steps change.
-const NEWS_ID = '1.0.5';
-const syncNames = () => {
-  const n = Object.keys(SYNC).filter(syncOffered).map((k) => SYNC[k].name);
-  return n.length > 1 ? `${n.slice(0, -1).join(', ')} or ${n.at(-1)}` : n[0];
-};
-const NEWS = [
-  { title: "What's new in Glass Tab", text: 'Glass Tab just updated with a few new things. Want a quick look? It takes 30 seconds.', next: 'Show me', skip: 'Not now' },
-  { el: '#gear', title: 'Customize, tidied up', text: 'Settings sit in sections, and the box at the top finds any of them. Each section can go back to its defaults, and Backup saves your settings to a file.' },
-  { el: '#gear', title: 'Your own wallpaper', text: 'Use a photo of your own as the wallpaper. It stays on this computer, under the same glass.', setup: 'photo' },
-  { el: widgetEl('todo'), when: () => placed('todo'), title: 'Sync your to-do list', get text() { return `Show your ${syncNames()} list here. Adding, ticking and editing tasks updates the app too.`; }, setup: 'sync' },
-  { el: '#widgets', title: 'A few more things', text: 'Pin your own sites with Add site in Top sites. Press / to search, and Undo shows after you delete something. Calendar events open with a click, Large weather shows the next 24 hours, and Tidy up lines up your widgets.', setup: 'tidy' },
-  // On: what changed. Off: a strong nudge to turn it on, with the button right here.
-  { when: () => googleOn || ggState !== 'off', get title() { return googleOn ? 'Smoother glass Google' : 'Make Google glass too'; },
-    get text() { return googleOn ? "AI Overviews now load and open smoothly in glass, with no flicker, and their text fades straight into your wallpaper. Google's home page is glass now too." : GG_PITCH(); },
-    get setup() { return googleOn ? null : 'google'; } },
-];
+// What's new: one quiet line after an update, offered once to people who already took the
+// setup tour. Raise NEWS_ID (and change the line in newtab.html) when there's something new.
+const NEWS_ID = '1.0.7';
 let activeTour = TOUR;
 const tourSteps = () => activeTour.filter((s) => !s.when || s.when());
 let tourStep = -1;
@@ -2269,6 +2430,7 @@ function startTour(steps = TOUR) {
   $('#gear').setAttribute('aria-expanded', 'false');
   setEditing(false);
   $('#footerTip').hidden = true;
+  $('#newsTip').hidden = true;
   $('#rate').hidden = true;
   $('#ggNudge').hidden = true;
   closeToast();
@@ -2307,7 +2469,7 @@ function showTourStep(i) {
   }
   $('#tourCount').textContent = `${i + 1} of ${steps.length}`;
   $('#tourNext').textContent = step.next || (i === steps.length - 1 ? 'Done' : 'Next');
-  $('#tourSkip').textContent = step.skip || 'Skip';
+  $('#tourSkip').textContent = step.skip || 'Skip tour';
   $('#tourBack').hidden = i === 0;
   $('#tourSkip').hidden = i === steps.length - 1;
   // Card goes below the lit-up part if there's room, otherwise above, otherwise beside.
@@ -2346,6 +2508,12 @@ document.addEventListener('keydown', (e) => {
 // ---------- footer hint ----------
 // Chrome adds its own footer to extension new tab pages. Show a one-time hint on
 // how to hide it (after the tour); "Got it" dismisses it for good.
+function closeNews() {
+  $('#newsTip').hidden = true;
+  try { localStorage.setItem('glassTabNews', NEWS_ID); } catch {}
+}
+$('#newsTipLook').addEventListener('click', () => { closeNews(); openPanelAt('wallpaper', '#swatches'); });
+$('#newsTipClose').addEventListener('click', closeNews);
 function showFooterTip() {
   try { if (!localStorage.getItem('glassTabFooterTip')) $('#footerTip').hidden = false; } catch {}
 }
@@ -2409,6 +2577,6 @@ $('#rateNever').addEventListener('click', () => closeRate('never'));
 try {
   // Wait a moment so the widgets have drawn before the tour measures them.
   if (!localStorage.getItem('glassTabTour')) setTimeout(startTour, 600);
-  else if (localStorage.getItem('glassTabNews') !== NEWS_ID) setTimeout(() => startTour(NEWS), 600);
+  else if (localStorage.getItem('glassTabNews') !== NEWS_ID) $('#newsTip').hidden = false;
   else { showFooterTip(); maybeNudgeGoogle().then((shown) => { if (!shown) maybeAskRating(); }); }
 } catch {}

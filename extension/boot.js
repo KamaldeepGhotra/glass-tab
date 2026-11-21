@@ -18,3 +18,14 @@ try {
     root.classList.add('light'); // first run: follow the system
   }
 } catch {}
+
+// Big screens: the page is laid out for a laptop, so on a large monitor everything
+// would sit small in the middle. Scale it up with the window (never down, at most 2x).
+{
+  const fit = () => {
+    const s = Math.min(innerWidth / 1440, innerHeight / 900);
+    document.documentElement.style.setProperty('--ui-scale', Math.min(2, Math.max(1, Math.round(s * 20) / 20)));
+  };
+  fit();
+  addEventListener('resize', fit);
+}

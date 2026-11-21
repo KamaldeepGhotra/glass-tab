@@ -4,7 +4,10 @@
 // its own classes (gt-*), which google.css styles.
 (async () => {
   const root = document.documentElement;
-  const { look } = await chrome.storage.local.get('look');
+  // ggLight: whether Google itself was in light mode last time. Until this page's own color
+  // is known, that is a better guess than the system's mode (Google's appearance setting
+  // can differ from it), so a new page doesn't flash the other mode's wallpaper.
+  let { look, ggLight } = await chrome.storage.local.get(['look', 'ggLight']);
 
   // Matches the page to Google's own light or dark mode, using that mode's wallpaper.
   function setMode(light) {
@@ -27,7 +30,7 @@
     root.style.setProperty('--gt-tint', String(look.tint / 100));
     root.classList.toggle('gt-solid', !!look.solid);
   }
-  setMode(matchMedia('(prefers-color-scheme: light)').matches); // best guess until the page loads
+  setMode(ggLight ?? matchMedia('(prefers-color-scheme: light)').matches); // best guess until the page loads
 
   const lum = (color) => {
     const m = color.match(/[\d.]+/g);
@@ -64,6 +67,15 @@
     // Google's "Show more" fades are painted in its page color, which shows up as a band
     // on the wallpaper. They become real fades: the text itself fades out.
     if (FADE.test(cs.backgroundImage) && el.offsetWidth >= 150) { softFade(el, cs); return; }
+    // The AI Overview's loading glow is a big rainbow layer behind the box, which Google's
+    // page color covers except for a thin rim. With that color gone the whole rainbow would
+    // show as a slab, so the glow is cut down to its rim.
+    if (cs.backgroundImage.startsWith('conic-gradient') && el.offsetWidth >= 150) {
+      let glow = el;
+      while (glow.parentElement && getComputedStyle(glow.parentElement).position === 'absolute') glow = glow.parentElement;
+      glow.classList.add('gt-rim');
+      return;
+    }
     // Until Google's page color is known nothing below can be judged (an empty color
     // would match everything).
     if (!pageBg || cs.position === 'fixed' || cs.position === 'absolute') return;
@@ -74,6 +86,8 @@
     // results column, and the strip behind the AI Overview's "Show more" (which the pill takes
     // its color from) would stay, showing as a square block behind the rounded button.
     if (cs.backgroundColor === pageBg && (el.offsetWidth >= Math.min(innerWidth * 0.4, 480) || el.offsetWidth >= (el.closest('.gt-card')?.offsetWidth ?? Infinity) * 0.5)) el.classList.add('gt-clear');
+    // Labels in the ads block ("Sponsored results") are page-colored boxes of any width.
+    else if (cs.backgroundColor === pageBg && el.closest('#tads, #tadsb, #bottomads') && !el.closest('a, button, [role="button"], [role="link"]')) el.classList.add('gt-clear');
     if (cs.backgroundImage.includes(pageBg)) el.classList.add('gt-nofade');
   }
   // Each search result: the top-level block around a result title.
@@ -194,7 +208,10 @@
     // tagged by the old one is untagged first.
     if (was && pageBg !== was) document.querySelectorAll('.gt-clear, .gt-nofade').forEach((el) => el.classList.remove('gt-clear', 'gt-nofade'));
     mark();
-    setMode((lum(pageBg) ?? 0) >= 128);
+    if (!pageBg) { setMode(ggLight ?? matchMedia('(prefers-color-scheme: light)').matches); return; }
+    const light = lum(pageBg) >= 128;
+    setMode(light);
+    if (light !== ggLight) { ggLight = light; chrome.storage.local.set({ ggLight }).catch(() => {}); }
   }
   // Starts as soon as the page's body begins, not when the page is done: Google sends the
   // AI Overview with the first part of the page, and Chrome draws it right away. Once the

@@ -74,7 +74,7 @@ html { background: var(--base); }
 /* Moving waves cover the still picture underneath, starting from the first band's color. */
 #waves { position: absolute; inset: 0; }
 #waves:empty { display: none; }
-#waves svg { position: absolute; inset: 0; width: 100%; height: 100%; will-change: transform; }
+#waves svg { position: absolute; inset: 0; width: 100%; height: 100%; will-change: transform; mix-blend-mode: var(--layer-blend, normal); transform-origin: 50% 20%; }
 
 /* Blends the page into the toolbar */
 #fade { position: fixed; left: 0; right: 0; top: 0; height: 140px; background: linear-gradient(var(--bar), transparent); z-index: -1; pointer-events: none; }
@@ -87,12 +87,15 @@ html { background: var(--base); }
   box-shadow: inset 0 1px 0 var(--shine), inset 0 -1px 0 rgba(255, 255, 255, .06), 0 10px 30px var(--drop);
   color: var(--fg);
 }
-.liquid .glass.liquid { backdrop-filter: url(#liquid-filter) blur(var(--blur)) saturate(170%); }
+/* Liquid glass is clearer than frosted, so the bending at its rim shows. Widgets get it too
+   while the wallpaper is still, except while editing (they jiggle and move). */
+.liquid .glass.liquid,
+.liquid:not(.animated):not(.solid) body:not(.editing) .widget.glass { backdrop-filter: blur(calc(var(--blur) / 3)) var(--lq, saturate(100%)) saturate(170%); }
 /* Reduce transparency: solid surfaces for readability, like the iOS setting */
 .solid .glass, .solid .glass.liquid { background: var(--solid-bg); backdrop-filter: none; }
 
 /* Layout */
-main { height: 100%; display: flex; flex-direction: column; align-items: center; padding-top: 10vh; overflow: auto; }
+main { zoom: var(--ui-scale, 1); height: 100%; display: flex; flex-direction: column; align-items: center; padding-top: calc(10vh / var(--ui-scale, 1)); overflow: auto; }
 #greeting { font-size: var(--greeting-size, 22px); font-weight: 500; opacity: .9; margin-bottom: 2px; }
 #greeting:empty { display: none; }
 #date { font-size: 18px; font-weight: 500; opacity: .8; }
@@ -330,11 +333,12 @@ main { height: 100%; display: flex; flex-direction: column; align-items: center;
 .panel-end { font-size: 12px; }
 .row.two { margin: 6px 0 10px; }
 .row.two .chip { flex: 1; padding: 6px 10px; font-size: 13px; }
-.colors-box { margin: -2px 0 10px; }
-.colors-box[open] { background: rgba(var(--ink), .05); border-radius: 12px; padding: 8px 10px; }
-.wp-colors { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; margin: 8px 0 6px; }
-.wp-colors label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.wp-colors input { width: 28px; height: 28px; border: 0; padding: 0; background: none; cursor: pointer; border-radius: 50%; }
+.colors-box { margin: 0 0 10px; }
+.colors-box .sub .muted { margin-left: 4px; }
+/* Each color is a round swatch with its name under it; clicking opens Chrome's picker. */
+.wp-colors { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 2px 0 6px; }
+.wp-colors label { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; opacity: .85; cursor: pointer; }
+.wp-colors input { width: 32px; height: 32px; border: 0; padding: 0; background: none; cursor: pointer; border-radius: 50%; }
 .wp-colors input::-webkit-color-swatch-wrapper { padding: 0; }
 .wp-colors input::-webkit-color-swatch { border: 1px solid rgba(var(--ink), .25); border-radius: 50%; }
 .colors-box .linkish { margin: 0; }
@@ -356,9 +360,10 @@ main { height: 100%; display: flex; flex-direction: column; align-items: center;
 .credit { margin-top: 8px; }
 
 /* One-time hint about hiding Chrome's new tab footer */
-#footerTip { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 20px; border-radius: 999px; font-size: 13px; z-index: 4; animation: tipIn .5s ease-out both; max-width: calc(100vw - 120px); }
-#footerTip[hidden] { display: none; }
-#footerTip .chip { flex: none; }
+#newsTip .linkish { margin: 0; font-size: 18px; line-height: 1; padding: 0 4px; }
+#footerTip, #newsTip { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 20px; border-radius: 999px; font-size: 13px; z-index: 4; animation: tipIn .5s ease-out both; max-width: calc(100vw - 120px); }
+#footerTip[hidden], #newsTip[hidden] { display: none; }
+#footerTip .chip, #newsTip .chip { flex: none; }
 @keyframes tipIn { from { opacity: 0; transform: translate(-50%, 8px); } }
 
 /* First-run tour: everything dims except the part being explained */
@@ -392,10 +397,22 @@ main { height: 100%; display: flex; flex-direction: column; align-items: center;
 .photo-row .linkish { margin-left: 0; }
 #photoNote:empty { display: none; }
 .swatches button.photo { box-shadow: inset 0 0 0 1px rgba(var(--ink), .2); }
-/* × on your own photo, so it can be removed (built-in wallpapers can't) */
-.swatches { position: relative; }
-.swatches button.photo-x { position: relative; width: 16px; height: 16px; margin: -4px 0 0 -18px; align-self: flex-start; border: 0; border-radius: 50%; padding: 0; background: var(--on-bg); color: var(--on-fg); font: inherit; font-size: 12px; font-weight: 600; line-height: 16px; box-shadow: 0 1px 3px var(--drop); }
-.swatches button.photo-x:hover { transform: scale(1.12); }
+/* "+" for your own clock color: a dashed circle over Chrome's color picker */
+.swatches .add-color { position: relative; box-sizing: border-box; width: 24px; height: 24px; border-radius: 50%; border: 1.5px dashed rgba(var(--ink), .5); opacity: .8; cursor: pointer; }
+/* The + is two bars drawn from the exact middle, so it's centered at any size. */
+.swatches .add-color::before, .swatches .add-color::after { content: ''; position: absolute; left: 50%; top: 50%; width: 10px; height: 1.5px; border-radius: 1px; background: var(--fg); transform: translate(-50%, -50%); pointer-events: none; }
+.swatches .add-color::after { transform: translate(-50%, -50%) rotate(90deg); }
+.swatches .add-color:hover, .swatches .add-color:focus-within { opacity: 1; border-style: solid; }
+.swatches .add-color input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; padding: 0; border: 0; }
+.swatches button.own { box-shadow: inset 0 0 0 1px rgba(var(--ink), .2); }
+/* × on your own photo or color, so it can be removed (built-in ones can't). It sits on the
+   swatch's top-right edge; like the +, it's two bars drawn from its exact middle. */
+.swatch-wrap { position: relative; display: inline-flex; }
+.swatches .swatch-wrap button.swatch-x { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border: 0; border-radius: 50%; padding: 0; background: var(--on-bg); box-shadow: 0 1px 3px var(--drop); transition: transform .15s; }
+.swatches .swatch-wrap button.swatch-x::before, .swatches .swatch-wrap button.swatch-x::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 1.5px; border-radius: 1px; background: var(--on-fg); transform: translate(-50%, -50%) rotate(45deg); }
+.swatches .swatch-wrap button.swatch-x::after { transform: translate(-50%, -50%) rotate(-45deg); }
+.swatches .swatch-wrap button.swatch-x:hover { transform: scale(1.12); }
+.swatches.small .swatch-wrap button.swatch-x { top: -5px; right: -5px; width: 14px; height: 14px; }
 
 /* Undo toast */
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 8px 10px 8px 18px; border-radius: 999px; font-size: 13px; z-index: 40; animation: toastIn .25s ease-out both; max-width: calc(100vw - 140px); }
@@ -457,7 +474,7 @@ a.cal-ev:hover .cal-n, a.cal-one:hover .cal-next { text-decoration: underline; }
 .light .group > summary .sum { opacity: .72; }
 .light #search input::placeholder { color: rgba(0, 0, 0, .62); }
 /* The footer hint sits in the same spot; the toast goes above it. */
-#footerTip:not([hidden]) ~ #toast { bottom: 76px; }
+#footerTip:not([hidden]) ~ #toast, #newsTip:not([hidden]) ~ #toast { bottom: 76px; }
 
 /* Glass Google nudge: same card as the rating one */
 #ggNudge { position: fixed; left: 20px; bottom: 20px; width: 290px; border-radius: 22px; padding: 16px 18px 12px; z-index: 6; animation: cardIn .4s ease-out both; }

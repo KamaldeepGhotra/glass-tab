@@ -1,4 +1,4 @@
-// Glass Google search: shared by the background worker, new tab, welcome and prompt pages.
+// Glass Google search: shared by the background worker, new tab and prompt pages.
 // The user's choice is saved in chrome.storage.local as gg = { state, prompted }:
 //   state: 'on' | 'off' (turned off in settings) | 'declined' (said no to Chrome's prompt)
 //   prompted: the one-time reminder on a Google search has been shown
@@ -33,14 +33,14 @@ async function ggIsOn() {
 }
 
 // Must be called straight from a click: Chrome only shows its permission prompt then.
-// Saying no on the welcome page (right after install) arms the one-time reminder.
-async function ggTurnOn({ fromWelcome = false } = {}) {
+// Saying no during the first-run tour arms the one-time reminder.
+async function ggTurnOn({ remind = false } = {}) {
   let ok = false;
   try { ok = await chrome.permissions.request({ origins: GG.origins }); } catch {}
   if (ok) {
     await ggRegister();
     await ggSet({ state: 'on' });
-  } else if (fromWelcome) {
+  } else if (remind) {
     await ggSet({ state: 'declined' });
   }
   return ok;
