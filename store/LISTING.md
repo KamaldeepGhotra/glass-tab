@@ -24,15 +24,10 @@ Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass T
 
 If the dashboard says it can't submit, click **Why can't I submit?** at the top. It lists the boxes that are empty.
 
-**Current version:** 1.0.7, zip `store/glass-tab-1.0.7.zip`.
-**Since the last listing update:** for 1.0.7 the Description gained the new wallpapers (dunes,
-silk, northern lights, lava), your own clock colors and the motion speed. Paste the new
-Description below into **Store listing**. No permissions were added, so the **Privacy** tab in
-the dashboard doesn't change; the privacy policy page on the website gained one line about
-remembering Google's light or dark mode.
-**New screenshots for 1.0.7:** all five and the promo tile were retaken on the new wallpapers. In
-the dashboard, delete the old screenshots and upload the five in `store/` in order, then replace
-the small promo tile.
+**Current version:** 1.0.8, zip `store/glass-tab-1.0.8.zip`.
+**Since the last listing update:** for 1.0.8 the Description adds the lava lamp wallpaper. Paste
+the new Description below into **Store listing**. No permissions or privacy changes.
+**Screenshots:** the five in `store/` were taken for 1.0.7 and are already uploaded; nothing to change.
 
 ---
 
@@ -58,7 +53,7 @@ A clock like your lock screen
 • A greeting and a daily quote, both optional
 
 Wallpapers that move
-• Curated wallpapers for light and dark mode: drifting dunes, silk ribbons, northern lights, lava, layered waves and soft glows, and you can change their colors
+• Curated wallpapers for light and dark mode: a lava lamp, drifting dunes, silk ribbons, northern lights, layered waves and soft glows, and you can change their colors
 • Or use a photo of your own. It stays on your computer
 • Gentle motion at 15, 30, 60 or 120 fps at the speed you like, or keep it still
 • Follows your system's light or dark mode automatically

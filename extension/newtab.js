@@ -18,6 +18,7 @@ const PRESETS = {
   silk:     scene('Silk', 'silk', '#0b0614', ['#ff5ea8', '#7a3cff', '#20d4c4']),
   lights:   scene('Northern lights', 'lights', '#030914', ['#3de6aa', '#8a6bff', '#2f8cff']),
   lava:     scene('Lava', 'lava', '#14051d', ['#ff4f7b', '#ff9a3c', '#9646ff']),
+  lamp:     scene('Lava lamp', 'lamp', '#160510', ['#ff4a1c', '#ff2d6f', '#ffb02e']),
   aurora:   { name: 'Aurora',   base: '#05080d', c: ['#12a4b8', '#6a30d8', '#1db87f'] },
   sunset:   { name: 'Sunset',   base: '#0e0707', c: ['#ff6a3d', '#c4195e', '#ffad42'] },
   neon:     { name: 'Neon',     base: '#07050f', c: ['#ff2e93', '#6200ff', '#00d9ff'] },
@@ -30,6 +31,7 @@ const LIGHT_PRESETS = {
   silk:    scene('Silk', 'silk', '#f7f3fb', ['#ff8fbd', '#9d84ff', '#5fcfe0']),
   lights:  scene('Northern lights', 'lights', '#eef4fb', ['#2fc79a', '#8b78ff', '#4a9cff']),
   lava:    scene('Lava', 'lava', '#fdf0f3', ['#ff8fae', '#ffb877', '#b796ff']),
+  lamp:    scene('Lava lamp', 'lamp', '#fff3ea', ['#ff6a3d', '#f2427f', '#ffab3d']),
   mist:    { name: 'Mist',    base: '#edf1f9', c: ['#86aaff', '#c39bff', '#73d9e4'] },
   prism:   { name: 'Prism',   base: '#f4f2fb', c: ['#ff8ab5', '#78acff', '#8eeec4'] },
 };
@@ -122,6 +124,141 @@ function waveURL(p) {
     + (blend ? `<g style="mix-blend-mode:${blend}">${layers.join('')}</g>` : layers.join(''));
   return (waveCache[key] = `url("data:image/svg+xml,${encodeURIComponent(svgOf(defs, inner, wrap))}")`);
 }
+// Lava lamp: blobs of warm wax rise, stretch tall and thin while they move, and sink back,
+// melting into each other and into pools at the top and bottom. Each pixel adds up how
+// close it is to every blob (a "metaball" field); where the sum passes 1 it's wax. It's
+// drawn on a small canvas the page stretches to full size: the wax is soft anyway, so this
+// looks smooth and takes a few milliseconds a frame.
+const LAMP_BLOBS = [ // x (0 to 1), size, seconds to rise and sink, start
+  [0.16, 0.085, 34, 0], [0.3, 0.11, 46, 2.1], [0.45, 0.075, 29, 4.2], [0.57, 0.1, 52, 1.3],
+  [0.69, 0.08, 38, 3.4], [0.82, 0.095, 43, 5.1], [0.38, 0.065, 25, 0.7], [0.9, 0.065, 31, 2.8],
+];
+const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+// Where each blob is at time t: [x, y, half width, half height], with x running 0 to the
+// window's width/height ratio and y 0 (top) to 1 (bottom).
+function lampBlobs(aspect, t) {
+  const blobs = LAMP_BLOBS.map(([x, r, sec, start]) => {
+    const a = 2 * Math.PI * t / sec + start;
+    const stretch = 1 + 0.65 * Math.abs(Math.cos(a)); // fastest mid-way, so tallest there
+    return [x * aspect + 0.03 * Math.sin(a * 1.7 + start), 0.52 - 0.47 * Math.sin(a), r / Math.sqrt(stretch), r * stretch];
+  });
+  // Pools resting on the bottom and hanging from the top, gently swelling.
+  blobs.push([0.5 * aspect, 1.13 + 0.02 * Math.sin(t / 9), 0.75 * aspect, 0.2], [0.5 * aspect, -0.1, 0.6 * aspect, 0.11 + 0.015 * Math.sin(t / 7)]);
+  return blobs;
+}
+// The graphics card draws it at the screen's full sharpness: the same sums as drawLamp
+// below, once per pixel. Returns null where WebGL isn't available.
+const LAMP_SHADER = `precision highp float;
+uniform vec2 res; uniform vec4 blobs[10]; uniform vec3 base, low, mid, high; uniform float dark;
+void main() {
+  float ny = 1.0 - gl_FragCoord.y / res.y, nx = gl_FragCoord.x / res.y;
+  float f = 0.0;
+  for (int i = 0; i < 10; i++) { vec2 d = vec2((nx - blobs[i].x) / blobs[i].z, (ny - blobs[i].y) / blobs[i].w); f += 1.0 / (dot(d, d) + 0.0001); }
+  vec3 wax = ny > 0.5 ? mix(low, mid, (1.0 - ny) * 2.0) : mix(mid, high, (0.5 - ny) * 2.0);
+  float glowRow = 0.1 * (1.0 - abs(ny - 0.55) * 1.6);
+  float inside = clamp((f - 0.96) / 0.08, 0.0, 1.0);
+  float core = clamp((f - 1.2) / 3.0, 0.0, 1.0) * mix(0.2, 0.35, dark);
+  float glow = min(1.0, f * 0.18) * mix(0.12, 0.3, dark) + glowRow * mix(0.4, 1.0, dark);
+  vec3 bg = base + (mid - base) * glow;
+  // A whisper of noise hides the steps in very gentle gradients (banding).
+  float noise = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
+  gl_FragColor = vec4(mix(bg, wax + (1.0 - wax) * core, inside) + noise, 1.0);
+}`;
+function lampGL(cv, keep = false) {
+  const gl = cv.getContext('webgl', { antialias: false, preserveDrawingBuffer: keep });
+  if (!gl) return null;
+  const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); return x; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, 'attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }'));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, LAMP_SHADER));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  const u = (n) => gl.getUniformLocation(prog, n);
+  return (p, t) => {
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.uniform2f(u('res'), cv.width, cv.height);
+    gl.uniform4fv(u('blobs'), lampBlobs(cv.width / cv.height, t).flat());
+    ['base', 'low', 'mid', 'high'].forEach((n, i) => gl.uniform3fv(u(n), hexToRgb(i ? p.c[i - 1] : p.base).map((v) => v / 255)));
+    gl.uniform1f(u('dark'), isDark(p.base) ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  };
+}
+// Without WebGL: the same picture worked out pixel by pixel on a small canvas the page
+// stretches to full size (softer, but cheap).
+function drawLamp(cv, p, t) {
+  const W = cv.width, H = cv.height, aspect = W / H;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(W, H), px = img.data;
+  const base = hexToRgb(p.base), [low, mid, high] = p.c.map(hexToRgb), dark = isDark(p.base);
+  const blobs = lampBlobs(aspect, t);
+  for (let j = 0, o = 0; j < H; j++) {
+    const ny = j / H;
+    // Wax is hottest (brightest) low down and cools toward the top.
+    const wax = ny > 0.5 ? low.map((v, k) => v + (mid[k] - v) * (1 - ny) * 2) : mid.map((v, k) => v + (high[k] - v) * (0.5 - ny) * 2);
+    const glowRow = 0.1 * (1 - Math.abs(ny - 0.55) * 1.6);
+    for (let i = 0; i < W; i++, o += 4) {
+      const nx = i / H;
+      let f = 0;
+      for (const [bx, by, rx, ry] of blobs) {
+        const dx = (nx - bx) / rx, dy = (ny - by) / ry;
+        f += 1 / (dx * dx + dy * dy + 0.0001);
+      }
+      const inside = Math.min(1, Math.max(0, (f - 0.9) / 0.25)); // soft edge
+      const core = Math.min(1, Math.max(0, (f - 1.2) / 3)) * (dark ? 0.35 : 0.2); // lit from inside
+      const glow = Math.min(1, f * 0.18) * (dark ? 0.3 : 0.12) + glowRow * (dark ? 1 : 0.4);
+      for (let k = 0; k < 3; k++) {
+        const bg = base[k] + (mid[k] - base[k]) * glow;
+        const w = wax[k] + (255 - wax[k]) * core;
+        px[o + k] = bg + (w - bg) * inside;
+      }
+      px[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+let lampOn = null, lampDraw;
+// On the graphics card the canvas matches the screen's pixels (up to about 8 million, so a
+// 5K display stays fast); without it, about 320 pixels across.
+function sizeLamp() {
+  const cv = $('#lamp');
+  if (lampDraw === undefined) lampDraw = lampGL(cv);
+  let w = 320, h = Math.max(120, Math.round(w * innerHeight / innerWidth));
+  if (lampDraw) {
+    const k = Math.min(devicePixelRatio || 1, Math.sqrt(8e6 / (innerWidth * innerHeight)));
+    w = Math.round(innerWidth * k); h = Math.round(innerHeight * k);
+  }
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+}
+// Checks the size every frame too: moving the window to a sharper screen sends no resize.
+const paintLamp = (t) => { sizeLamp(); return lampDraw ? lampDraw(lampOn, t) : drawLamp($('#lamp'), lampOn, t); };
+// A still picture of the lamp, for the swatch and Glass Google's background.
+const lampCache = {};
+function lampURL(p) {
+  const key = JSON.stringify([p.base, p.c]);
+  if (lampCache[key]) return lampCache[key];
+  const keys = Object.keys(lampCache);
+  if (keys.length > 8) delete lampCache[keys[0]];
+  const cv = document.createElement('canvas');
+  cv.width = 1280; cv.height = 800;
+  const draw = lampGL(cv, true);
+  if (draw) draw(p, 17);
+  else { cv.width = 480; cv.height = 300; drawLamp(cv, p, 17); }
+  const url = `url("${cv.toDataURL('image/jpeg', 0.9)}")`;
+  // Chrome only keeps a few graphics contexts alive at once: hand this one back.
+  cv.getContext('webgl')?.getExtension('WEBGL_lose_context')?.loseContext();
+  return (lampCache[key] = url);
+}
+function showLamp(p) {
+  lampOn = p.scene === 'lamp' ? p : null;
+  $('#lamp').hidden = !lampOn;
+  if (lampOn) { sizeLamp(); paintLamp(motionClock); }
+}
+addEventListener('resize', () => { if (lampOn) { sizeLamp(); paintLamp(motionClock); } });
+
 // Moving: each layer is its own picture that stepMotion slides at its own pace.
 let waveKey = '', sceneKind = '', lava = false;
 function drawWaves(p) {
@@ -479,7 +616,7 @@ function varsFor(m) {
   const weight = S.clockStyle !== 'solid' && f.weight < 400 ? 400 : f.weight;
   return {
     '--base': p.base, '--c1': p.c[0], '--c2': p.c[1], '--c3': p.c[2], '--bar': (TOP_BAR[S.topBar] || TOP_BAR.chrome)[m],
-    '--wave': layered(p) ? waveURL(p) : 'none', '--blob-display': layered(p) || p.photo ? 'none' : 'block', '--photo-display': p.photo ? 'block' : 'none',
+    '--wave': layered(p) ? waveURL(p) : p.scene === 'lamp' ? lampURL(p) : 'none', '--blob-display': layered(p) || p.photo || p.scene === 'lamp' ? 'none' : 'block', '--photo-display': p.photo ? 'block' : 'none',
     '--blur': `${S.blur}px`, '--tint': String(S.tint / 100),
     '--clock-font': f.stack, '--clock-weight': String(weight), '--clock-size': `${S.clockSize}px`, '--greeting-size': `${S.greetingSize}px`,
     '--clock-rgb': clockRgb(m),
@@ -499,6 +636,7 @@ function applyLook() {
   const p = presetFor(m);
   drawWaves(moving() && layered(p) ? p : null);
   lava = p.scene === 'lava';
+  showLamp(p);
   updateMotion();
   // boot.js applies this before the next page draws, for whichever mode is active then.
   try {
@@ -506,7 +644,7 @@ function applyLook() {
   } catch {}
   // Shared with the Glass Google content script, which picks the mode Google is in.
   const pd = presetFor('dark'), pl = presetFor('light');
-  const wave = (p) => (layered(p) ? waveURL(p) : null);
+  const wave = (p) => (layered(p) ? waveURL(p) : p.scene === 'lamp' ? lampURL(p) : null);
   const look = { dark: { base: pd.base, c: pd.c, wave: wave(pd) }, light: { base: pl.base, c: pl.c, wave: wave(pl) }, blur: S.blur, tint: S.tint, solid: S.solidGlass };
   if (hasChrome && JSON.stringify(look) !== lastLook) { lastLook = JSON.stringify(look); chrome.storage.local.set({ look }); }
 }
@@ -541,6 +679,7 @@ function stepMotion(now) {
   if (lastStep) motionClock += Math.min(now - lastStep, 250) / 1000 * S.speed;
   lastStep = now;
   const t = motionClock, TAU = 2 * Math.PI;
+  if (lampOn) paintLamp(t);
   // Blobs drift out and back. Lava's wander much further, each on its own loop, so they
   // melt into one another and pull apart.
   blobs.forEach(([el, sec], i) => {
@@ -2110,7 +2249,7 @@ async function importSettings(file) {
 // Wallpaper and clock color swatches depend on the mode (and the user's own wallpaper
 // colors), so rebuild them when those change.
 let swatchMode = '';
-const swatchBg = (p) => (layered(p) ? `center / cover ${waveURL(p)}` : `conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`);
+const swatchBg = (p) => (layered(p) ? `center / cover ${waveURL(p)}` : p.scene === 'lamp' ? `center / cover ${lampURL(p)}` : `conic-gradient(${p.c[0]}, ${p.c[1]}, ${p.c[2]}, ${p.c[0]})`);
 function buildSwatches() {
   const m = mode();
   const sig = `${m}${JSON.stringify(S.wpColors)}${photo?.thumb.length || 0}${JSON.stringify(S.clockCustom)}`;
@@ -2422,7 +2561,7 @@ const TOUR_SETUP = {
 // The tour: what each part is, then a quick setup for the widgets that need it.
 // Steps with "when" only appear if that widget is on.
 const TOUR = [
-  { title: 'Welcome to Glass Tab', text: "Let's set things up. It takes about a minute, and you can skip any step.", next: "Let's go", skip: 'Skip setup' },
+  { title: 'Welcome to Glass Tab', text: "Let's set things up. It takes about a minute, and you can skip any step. If Chrome asks whether to keep this new tab page, choose Keep it: Change it back turns Glass Tab off.", next: "Let's go", skip: 'Skip setup' },
   { el: '#widgets', title: 'Pick your widgets', text: 'Choose what you want on your new tab. You can change this any time.', setup: 'pick' },
   { el: widgetEl('weather'), when: () => placed('weather'), title: 'Weather', text: 'Type your city, or let Glass Tab use your location.', setup: 'weather' },
   { el: widgetEl('calendar'), when: () => placed('calendar'), title: 'Calendar', text: 'Link your Google or iCloud calendar to see what\'s coming up. The link stays on this computer. It updates every 15 minutes.', setup: 'calendar' },
@@ -2438,7 +2577,7 @@ const TOUR = [
 ];
 // What's new: one quiet line after an update, offered once to people who already took the
 // setup tour. Raise NEWS_ID (and change the line in newtab.html) when there's something new.
-const NEWS_ID = '1.0.7';
+const NEWS_ID = '1.0.8';
 let activeTour = TOUR;
 const tourSteps = () => activeTour.filter((s) => !s.when || s.when());
 let tourStep = -1;
