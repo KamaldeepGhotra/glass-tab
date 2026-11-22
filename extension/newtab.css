@@ -309,7 +309,8 @@ main { zoom: var(--ui-scale, 1); height: 100%; display: flex; flex-direction: co
 #panel {
   /* Runs from just under Chrome's top bar down to the button; groups scroll inside. */
   position: fixed; right: 20px; top: 16px; bottom: 76px; width: 340px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
-  border-radius: 24px; padding: 18px 20px;
+  /* Concentric corners: the fields inside have 10px corners and sit 18px in, so 28px. */
+  border-radius: 28px; padding: 18px 20px;
   background: var(--panel-bg);
   backdrop-filter: blur(30px) saturate(160%);
   border: 1px solid var(--edge);
@@ -371,7 +372,7 @@ main { zoom: var(--ui-scale, 1); height: 100%; display: flex; flex-direction: co
 #tour[hidden] { display: none; }
 #tourRing { position: fixed; box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .5), 0 0 0 2px rgba(255, 255, 255, .5); transition: all .4s cubic-bezier(.3, .8, .3, 1); pointer-events: none; }
 .light #tourRing { box-shadow: 0 0 0 200vmax rgba(20, 24, 40, .35), 0 0 0 2px rgba(255, 255, 255, .9); }
-#tourCard { position: fixed; border-radius: 22px; padding: 16px 18px 14px; transition: top .4s cubic-bezier(.3, .8, .3, 1), left .4s cubic-bezier(.3, .8, .3, 1); animation: cardIn .4s ease-out both; }
+#tourCard { position: fixed; border-radius: 28px; padding: 16px 18px 14px; transition: top .4s cubic-bezier(.3, .8, .3, 1), left .4s cubic-bezier(.3, .8, .3, 1); animation: cardIn .4s ease-out both; }
 @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } }
 #tourCard h2 { margin: 4px 0 6px; font-size: 18px; font-weight: 600; }
 #tourCard p { margin: 0 0 14px; font-size: 14px; line-height: 1.45; opacity: .9; }
@@ -486,3 +487,19 @@ a.cal-ev:hover .cal-n, a.cal-one:hover .cal-next { text-decoration: underline; }
 #ggNudge h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
 #ggNudge p { margin: 8px 0 12px; font-size: 13px; line-height: 1.4; }
 #ggNudge .chip.primary, #tourExtra .chip.primary { width: 100%; background: var(--on-bg); color: var(--on-fg); border-color: transparent; font-weight: 600; }
+
+/* Widget tiles off: widgets drop their glass card and sit on the wallpaper. A soft shadow
+   keeps their text readable on any wallpaper; while editing, a faint outline shows where
+   each one is. */
+html.notiles .widget.glass { background: none !important; border-color: transparent !important; box-shadow: none !important; backdrop-filter: none !important; }
+html.notiles .widget { text-shadow: 0 1px 2px rgba(0, 0, 0, .55), 0 0 12px rgba(0, 0, 0, .35); }
+html.notiles.light .widget { text-shadow: 0 1px 2px rgba(255, 255, 255, .8), 0 0 12px rgba(255, 255, 255, .6); }
+html.notiles .editing .widget { outline: 1px dashed rgba(var(--ink), .4); outline-offset: -1px; }
+
+/* Text details (after Jakub Krehel's "Details that make interfaces feel better"):
+   short lines break evenly, paragraphs don't leave one word alone on the last line,
+   light text on glass renders crisper on macOS, and numbers that change keep their width. */
+html { -webkit-font-smoothing: antialiased; }
+#quoteCaption, #tourCard h2, #rate h2, #ggNudge h2, #newsTip span, #footerTip span { text-wrap: balance; }
+#tourCard p, #rate p, #ggNudge p, .note, .help, .muted { text-wrap: pretty; }
+.wx-temp, .wx-days, .wx-strip, .wx-facts, .cal-t, .cal-day, .cd-form, .focus-set { font-variant-numeric: tabular-nums; }

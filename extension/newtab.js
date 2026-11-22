@@ -320,7 +320,7 @@ const hexRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).
 //   Weather  S now · M + 3 days · L + details, hourly and 5 days
 //   To-do    S a short list · M a few tasks · L most lists · XL long lists
 //   Focus    S timer only · M + length controls and today's count
-//   Top sites S 4 icons · M 4 with names · L up to 12 with names
+//   Top sites and Pinned sites  S 4 icons · M 4 with names · L up to 12 with names
 //   Recent tabs and Quote: M and L (they need the width for text)
 //   Notes    S to XL, like the to-do list
 //   Countdown S days left · M + the date and hours
@@ -333,7 +333,7 @@ const SIZE_NAMES = { S: 'Small', M: 'Medium', L: 'Large', XL: 'Extra large' };
 // widgets get the Large spots, everything else is Medium. Just enough Larges shrink to
 // Medium for every block (and the last row) to come out full.
 const TIDY_BIG = ['todo', 'calendar', 'notes'];
-const TIDY_ORDER = ['todo', 'weather', 'calendar', 'sites', 'notes', 'focus', 'countdown', 'recent', 'quote'];
+const TIDY_ORDER = ['todo', 'weather', 'calendar', 'sites', 'pinned', 'notes', 'focus', 'countdown', 'recent', 'quote'];
 function tidyLayout(keys) {
   const sorted = TIDY_ORDER.filter((k) => keys.includes(k));
   let big = sorted.filter((k) => TIDY_BIG.includes(k));
@@ -367,6 +367,7 @@ const WIDGETS = {
   todo:    { name: 'To-do',       sizes: ['S', 'M', 'L', 'XL'], def: 'L' },
   focus:   { name: 'Focus timer', sizes: ['S', 'M'],            def: 'M' },
   sites:   { name: 'Top sites',   sizes: ['S', 'M', 'L'],       def: 'M' },
+  pinned:  { name: 'Pinned sites', sizes: ['S', 'M', 'L'],      def: 'M' },
   recent:  { name: 'Recent tabs', sizes: ['M', 'L'],            def: 'M' },
   quote:   { name: 'Quote',       sizes: ['M', 'L'],            def: 'M' },
   notes:   { name: 'Notes',       sizes: ['S', 'M', 'L', 'XL'], def: 'M' },
@@ -407,7 +408,7 @@ const QUOTES = [
 const DEFAULTS = {
   appearance: 'auto', // 'auto' follows the system / Chrome setting
   wallpaper: 'lights', wallpaperLight: 'silk', animated: true, fps: 60, speed: 1, topBar: 'chrome',
-  blur: 18, tint: 10, liquid: true, solidGlass: false,
+  blur: 18, tint: 10, liquid: true, solidGlass: false, tiles: true,
   clockStyle: 'clear', clockFont: 'tall', clockSize: 140, clockColor: 'white', clockColorLight: 'ink', hour24: false,
   name: '', greeting: true, greetingSize: 22,
   quote: 'caption', // 'off' | 'caption' | 'widget'
@@ -416,8 +417,11 @@ const DEFAULTS = {
   todos: [], focusMinutes: 30, notes: '', countdown: { title: '', date: '' },
   wpColors: {}, // wallpaper key -> { from, to } for waves, { base, c: [3] } for glows (see wpColorKey)
   clockCustom: { dark: [], light: [] }, // clock colors the user added, per mode, as '#rrggbb'
-  pins: [], // sites the user pinned to Top sites: [{ url, title }]
+  pins: [], // sites the user added to Pinned sites: [{ url, title }]
   glassGoogle: false, // turned on on any computer; Chrome's permission for it is per computer
+  // One-time moves (see migrate) that are already done. Listed here so a backup keeps them,
+  // and importing it doesn't repeat them.
+  defaults107: true, pinnedWidget: true,
 };
 // Where "Share an idea" and the page after uninstalling go. Keep in step with background.js.
 const FEEDBACK_URL = 'https://github.com/KamaldeepGhotra/glass-tab/issues/new';
@@ -448,6 +452,13 @@ function migrate(raw) {
     s.defaults107 = true;
   }
   for (const k of ['wallpaper', 'wallpaperLight']) if (RETIRED[s[k]]) s[k] = RETIRED[s[k]];
+  // Pins used to show inside Top sites. People who pinned sites get the new Pinned sites
+  // widget next to it once, so their sites don't disappear.
+  if (!s.pinnedWidget) {
+    const at = (s.layout || []).findIndex((w) => w.k === 'sites');
+    if (s.pins?.length && at >= 0 && !s.layout.some((w) => w.k === 'pinned')) s.layout = [...s.layout.slice(0, at + 1), { k: 'pinned', size: 'M' }, ...s.layout.slice(at + 1)];
+    s.pinnedWidget = true;
+  }
   const merged = { ...DEFAULTS, ...s };
   const hexes = (a) => (Array.isArray(a) ? a.filter((x) => HEX.test(x)).slice(0, MAX_CLOCK_CUSTOM) : []);
   merged.clockCustom = { dark: hexes(merged.clockCustom?.dark), light: hexes(merged.clockCustom?.light) };
@@ -626,7 +637,7 @@ function varsFor(m) {
 function applyLook() {
   const m = mode();
   // "animated" means the wallpaper is really moving: off with Reduce motion too, so widgets get liquid glass.
-  const base = [moving() && 'animated', S.liquid && 'liquid', S.solidGlass && 'solid'].filter(Boolean).join(' ');
+  const base = [moving() && 'animated', S.liquid && 'liquid', S.solidGlass && 'solid', !S.tiles && 'notiles'].filter(Boolean).join(' ');
   const root = document.documentElement;
   for (const [k, v] of Object.entries(varsFor(m))) root.style.setProperty(k, v);
   // The photo is large, so it's set only when it changes.
@@ -1423,11 +1434,12 @@ setInterval(drawFocus, 1000);
 
 // Large fits three rows of four; the rows spread out to fill the widget, so a shorter
 // list (Chrome only knows the sites you visit often) doesn't leave a gap at the bottom.
-// Sites you pin come first and stay; Chrome's most visited fill the rest.
+// Top sites shows Chrome's most visited; Pinned sites shows the ones you added yourself.
 const PIN_MAX = 12;
 const siteName = (url) => new URL(url).hostname.replace(/^www\./, '');
 const sameSite = (a, b) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
-function sitesWidget(size) {
+const pinnedWidget = (size) => sitesWidget(size, true);
+function sitesWidget(size, pinnedOnly = false) {
   const limit = size === 'L' ? 12 : 4;
   const grid = h('div', { class: 'sites' });
   const el = h('div', { class: 'sites-w' });
@@ -1438,20 +1450,21 @@ function sitesWidget(size) {
     return h('div', { class: 'site-box' }, a, h('button', { class: 'unpin', 'aria-label': `Remove ${name}`, title: 'Remove', onclick: (e) => { e.stopPropagation(); unpinSite(s); } }, '×'));
   };
   const draw = (top) => {
-    const pins = S.pins.slice(0, limit);
-    const rest = top.filter((s) => !pins.some((p) => sameSite(p.url, s.url))).slice(0, limit - pins.length);
+    const pins = pinnedOnly ? S.pins.slice(0, limit) : [];
+    const rest = pinnedOnly ? [] : top.slice(0, limit);
     if (!pins.length && !rest.length) {
       grid.className = 'muted';
-      grid.textContent = hasChrome ? 'Sites you visit often show up here. Add site pins your own.' : 'Available when installed in Chrome.';
+      grid.textContent = pinnedOnly ? 'Add the sites you use most, and they stay right here.'
+        : hasChrome ? 'Sites you visit often show up here.' : 'Available when installed in Chrome.';
       return;
     }
     grid.className = 'sites';
     grid.replaceChildren(...pins.map((p) => tile(p, true)), ...rest.map((s) => tile(s, false)));
   };
   const show = () => {
-    el.replaceChildren(h('div', { class: 'whead' }, h('h3', {}, 'Top sites'),
-      h('button', { class: 'linkish', onclick: (e) => { e.stopPropagation(); edit(); } }, 'Add site')), grid);
-    if (hasChrome && chrome.topSites) chrome.topSites.get(draw); else draw([]);
+    el.replaceChildren(h('div', { class: 'whead' }, h('h3', {}, pinnedOnly ? 'Pinned sites' : 'Top sites'),
+      pinnedOnly && S.pins.length < PIN_MAX ? h('button', { class: 'linkish', onclick: (e) => { e.stopPropagation(); edit(); } }, 'Add site') : null), grid);
+    if (!pinnedOnly && hasChrome && chrome.topSites) chrome.topSites.get(draw); else draw([]);
   };
   // Adding a site: its address, and in bigger sizes a name for it.
   const edit = () => {
@@ -1723,7 +1736,7 @@ async function saveCalendarLinks() {
   renderWidgets();
 }
 
-const RENDER = { weather: weatherWidget, todo: todoWidget, focus: focusWidget, sites: sitesWidget, recent: recentWidget, quote: quoteWidget, notes: notesWidget, countdown: countdownWidget, calendar: calendarWidget };
+const RENDER = { weather: weatherWidget, todo: todoWidget, focus: focusWidget, sites: sitesWidget, pinned: pinnedWidget, recent: recentWidget, quote: quoteWidget, notes: notesWidget, countdown: countdownWidget, calendar: calendarWidget };
 
 // ---------- layout and edit mode ----------
 // Widgets are identified by key (each widget appears at most once).
@@ -2023,6 +2036,7 @@ function buildPanel() {
   }));
   bind('#liquid', 'liquid', 'checked');
   bind('#solid', 'solidGlass', 'checked');
+  bind('#tiles', 'tiles', 'checked');
   bind('#hour24', 'hour24', 'checked');
   bind('#blur', 'blur', 'value', Number);
   bind('#speed', 'speed', 'value', Number);
@@ -2104,7 +2118,7 @@ function filterPanel(text) {
 // Reset to default, one Customize section at a time. Undo puts it back.
 const RESETS = {
   wallpaper: ['appearance', 'wallpaper', 'wallpaperLight', 'animated', 'fps', 'speed', 'wpColors'],
-  glass: ['blur', 'tint', 'liquid', 'solidGlass'],
+  glass: ['blur', 'tint', 'liquid', 'solidGlass', 'tiles'],
   clock: ['clockStyle', 'clockFont', 'clockSize', 'clockColor', 'clockColorLight', 'clockCustom', 'hour24'],
   greeting: ['greeting', 'name', 'greetingSize', 'quote'],
   widgets: ['layout'],
@@ -2385,7 +2399,7 @@ function drawSummaries() {
   const fps = S.animated ? `${S.fps} fps${S.speed !== 1 ? ` · ${S.speed}× speed` : ''}` : 'still';
   const set = (id, text) => { $(id).textContent = text; };
   set('#sumWallpaper', `${p.name}${S.wpColors[wpColorKey(m, wallpaperKey(m))] ? ' (yours)' : ''} · ${S.appearance === 'auto' ? 'auto' : S.appearance} · ${fps}`);
-  set('#sumGlass', S.solidGlass ? 'Less transparent' : S.liquid ? 'Liquid' : 'Frosted');
+  set('#sumGlass', `${S.solidGlass ? 'Less transparent' : S.liquid ? 'Liquid' : 'Frosted'}${S.tiles ? '' : ' · no widget tiles'}`);
   set('#sumClock', `${(FONTS[S.clockFont] || FONTS.tall).name} · ${{ solid: 'solid', clear: 'clear glass', frost: 'frosted' }[S.clockStyle]}`);
   set('#sumGreeting', `${S.greeting ? 'Greeting on' : 'Greeting off'} · quote ${{ off: 'off', caption: 'under clock', widget: 'widget' }[S.quote]}`);
   set('#sumWidgets', `${S.layout.length} on`);
@@ -2417,6 +2431,7 @@ function syncPanel() {
   mark('#motion', (b) => Number(b.dataset.fps) === (S.animated ? S.fps : 0));
   $('#liquid').checked = S.liquid;
   $('#solid').checked = S.solidGlass;
+  $('#tiles').checked = S.tiles;
   $('#hour24').checked = S.hour24;
   $('#blur').value = S.blur;
   $('#speed').value = S.speed;
@@ -2483,7 +2498,7 @@ const widgetEl = (k) => `.widget[data-k="${k}"]`;
 // Small setup forms shown inside the tour card. Each returns the elements to show.
 const TOUR_SETUP = {
   pick() {
-    const keys = ['weather', 'calendar', 'todo', 'notes', 'focus', 'countdown', 'sites', 'recent'];
+    const keys = ['weather', 'calendar', 'todo', 'notes', 'focus', 'countdown', 'sites', 'pinned', 'recent'];
     const chips = h('div', { class: 'chips' }, ...keys.map((k) => h('button', {
       class: placed(k) ? 'on' : '',
       onclick: (e) => {
@@ -2566,7 +2581,8 @@ const TOUR = [
   { el: widgetEl('weather'), when: () => placed('weather'), title: 'Weather', text: 'Type your city, or let Glass Tab use your location.', setup: 'weather' },
   { el: widgetEl('calendar'), when: () => placed('calendar'), title: 'Calendar', text: 'Link your Google or iCloud calendar to see what\'s coming up. The link stays on this computer. It updates every 15 minutes.', setup: 'calendar' },
   { el: widgetEl('todo'), when: () => placed('todo'), title: 'To-do', text: 'Add a task or two. Click a task later to edit it.', setup: 'todo' },
-  { el: widgetEl('sites'), when: () => placed('sites'), title: 'Top sites', text: 'The sites you visit most show up here. Add site pins your own, and pinned sites always come first.' },
+  { el: widgetEl('sites'), when: () => placed('sites'), title: 'Top sites', text: 'The sites you visit most show up here. For sites you choose yourself, add the Pinned sites widget.' },
+  { el: widgetEl('pinned'), when: () => placed('pinned'), title: 'Pinned sites', text: 'Add site keeps a site of your choice here. Hover over one and click × to remove it.' },
   { el: '#widgets', title: 'Move and resize', text: 'Press and hold any widget to move it. While editing, the S, M and L buttons change its size and × removes it. Removed something by mistake? Undo shows for a few seconds.' },
   { el: '#search', title: 'Search', text: `Search Google or type a website here. Press / to jump here. On any other site, press ${SHORTCUT} to bring up the same glass search bar.` },
   { el: '#gear', title: 'Customize', text: 'This round button in the corner opens Customize: wallpapers (or your own photo), light or dark, motion, glass, the clock, widgets and more. The box at the top finds any setting.' },
@@ -2577,7 +2593,7 @@ const TOUR = [
 ];
 // What's new: one quiet line after an update, offered once to people who already took the
 // setup tour. Raise NEWS_ID (and change the line in newtab.html) when there's something new.
-const NEWS_ID = '1.0.8';
+const NEWS_ID = '1.0.9';
 let activeTour = TOUR;
 const tourSteps = () => activeTour.filter((s) => !s.when || s.when());
 let tourStep = -1;

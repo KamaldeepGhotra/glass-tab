@@ -33,7 +33,7 @@
   </div>
 
   <div id="newsTip" class="glass" hidden role="status">
-    <span>New wallpaper to try: Lava lamp.</span>
+    <span>New: a Pinned sites widget, and widgets can go see-through in Customize › Glass.</span>
     <button id="newsTipLook" class="chip">Take a look</button>
     <button id="newsTipClose" class="linkish" aria-label="Dismiss">×</button>
   </div>
@@ -119,13 +119,15 @@
       <p class="note" id="speedNote">How fast the wallpaper moves: left is calmer, right is livelier.</p>
     </details>
 
-    <details class="group" data-group="glass" data-words="blur clarity tint transparency refraction frosted">
+    <details class="group" data-group="glass" data-words="blur clarity tint transparency refraction frosted tiles see-through cards">
       <summary><span>Glass</span><span class="sum" id="sumGlass"></span></summary>
       <label class="slider">Clarity <input type="range" id="blur" min="2" max="30" step="1"></label>
       <label class="slider">Tint <input type="range" id="tint" min="4" max="24" step="1"></label>
       <label class="toggle"><input type="checkbox" id="liquid"> Liquid refraction</label>
       <p class="note">Bends the wallpaper at the edges of the search bar, and of widgets too while Motion is Still.</p>
       <label class="toggle"><input type="checkbox" id="solid"> Reduce transparency</label>
+      <label class="toggle"><input type="checkbox" id="tiles"> Widget tiles</label>
+      <p class="note">Turn off to let widgets sit right on the wallpaper, with no glass behind them.</p>
     </details>
 
     <details class="group" data-group="clock" data-words="time font color size 24-hour">
@@ -157,7 +159,7 @@
       </div>
     </details>
 
-    <details class="group" data-group="widgets" data-words="layout tidy move resize size">
+    <details class="group" data-group="widgets" data-words="layout tidy move resize size pinned sites">
       <summary><span>Widgets</span><span class="sum" id="sumWidgets"></span></summary>
       <div id="widgetRows"></div>
       <div class="row two">

@@ -24,9 +24,10 @@ Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass T
 
 If the dashboard says it can't submit, click **Why can't I submit?** at the top. It lists the boxes that are empty.
 
-**Current version:** 1.0.8, zip `store/glass-tab-1.0.8.zip`.
-**Since the last listing update:** for 1.0.8 the Description adds the lava lamp wallpaper. Paste
-the new Description below into **Store listing**. No permissions or privacy changes.
+**Current version:** 1.0.9, zip `store/glass-tab-1.0.9.zip`.
+**Since the last listing update:** for 1.0.9 the Description mentions Pinned sites and see-through
+widgets. Paste it into **Store listing**. The privacy policy page now says "Pinned sites"; no
+permissions changed, so the **Privacy** tab in the dashboard doesn't change.
 **Screenshots:** the five in `store/` were taken for 1.0.7 and are already uploaded; nothing to change.
 
 ---
@@ -60,7 +61,8 @@ Wallpapers that move
 
 Widgets that fit your day
 • Weather with the next 24 hours, Calendar (Google or iCloud), To-do, Notes, Countdown, Focus timer, Top sites and Recently closed tabs
-• Pin your own sites to Top sites, and open calendar events with a click
+• Keep your own sites in Pinned sites, and open calendar events with a click
+• Widgets can sit on glass tiles or right on the wallpaper
 • Pick a size for each one, then press and hold to move them around
 • Keep your to-do list in Glass Tab, or show your Todoist list
 • Deleted something by mistake? Undo
