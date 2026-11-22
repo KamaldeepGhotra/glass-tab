@@ -361,10 +361,22 @@ main { zoom: var(--ui-scale, 1); height: 100%; display: flex; flex-direction: co
 .credit { margin-top: 8px; }
 
 /* One-time hint about hiding Chrome's new tab footer */
-#newsTip .linkish { margin: 0; font-size: 18px; line-height: 1; padding: 0 4px; }
-#footerTip, #newsTip { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 20px; border-radius: 999px; font-size: 13px; z-index: 4; animation: tipIn .5s ease-out both; max-width: calc(100vw - 120px); }
+#footerTip { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 20px; border-radius: 999px; font-size: 13px; z-index: 4; animation: tipIn .5s ease-out both; max-width: calc(100vw - 120px); }
 #footerTip[hidden], #newsTip[hidden] { display: none; }
-#footerTip .chip, #newsTip .chip { flex: none; }
+/* What's new: a small card with before and after pictures. Its corners follow the pictures
+   inside (10px) plus its padding (16px). */
+#newsTip { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(600px, calc(100vw - 120px)); padding: 14px 16px 12px; border-radius: 26px; font-size: 13px; z-index: 4; animation: tipIn .5s ease-out both; }
+.news-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#newsTip h2 { margin: 0; font-size: 15px; font-weight: 600; }
+#newsTip p { margin: 4px 0 10px; opacity: .85; line-height: 1.4; }
+#newsTipClose { margin: 0; font-size: 18px; line-height: 1; padding: 0 4px; }
+.news-shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.news-shots figure { margin: 0; }
+.news-shots img { display: block; width: 100%; height: auto; border-radius: 10px; outline: 1px solid rgba(var(--ink), .12); outline-offset: -1px; }
+.news-shots figcaption { margin-top: 4px; font-size: 11px; opacity: .75; text-align: center; }
+.news-btns { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+.news-btns .linkish { margin: 0; }
+#footerTip .chip { flex: none; }
 @keyframes tipIn { from { opacity: 0; transform: translate(-50%, 8px); } }
 
 /* First-run tour: everything dims except the part being explained */
@@ -431,7 +443,7 @@ main { zoom: var(--ui-scale, 1); height: 100%; display: flex; flex-direction: co
 #rate h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
 #rate p { margin: 8px 0; font-size: 13px; line-height: 1.4; }
 #rate .chip { display: block; text-align: center; text-decoration: none; }
-#rate .chip.primary { background: var(--on-bg); color: var(--on-fg); border-color: transparent; font-weight: 600; }
+#rate .chip.primary, #newsTip .chip.primary { background: var(--on-bg); color: var(--on-fg); border-color: transparent; font-weight: 600; }
 .rate-btns { display: flex; justify-content: space-between; margin-top: 10px; }
 .rate-btns .linkish { margin: 0; }
 
@@ -500,6 +512,6 @@ html.notiles .editing .widget { outline: 1px dashed rgba(var(--ink), .4); outlin
    short lines break evenly, paragraphs don't leave one word alone on the last line,
    light text on glass renders crisper on macOS, and numbers that change keep their width. */
 html { -webkit-font-smoothing: antialiased; }
-#quoteCaption, #tourCard h2, #rate h2, #ggNudge h2, #newsTip span, #footerTip span { text-wrap: balance; }
-#tourCard p, #rate p, #ggNudge p, .note, .help, .muted { text-wrap: pretty; }
+#quoteCaption, #tourCard h2, #rate h2, #ggNudge h2, #newsTip h2, #footerTip span { text-wrap: balance; }
+#tourCard p, #rate p, #ggNudge p, #newsTip p, .note, .help, .muted { text-wrap: pretty; }
 .wx-temp, .wx-days, .wx-strip, .wx-facts, .cal-t, .cal-day, .cd-form, .focus-set { font-variant-numeric: tabular-nums; }

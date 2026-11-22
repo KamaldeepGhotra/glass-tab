@@ -97,3 +97,9 @@ html.glass-google.gt-light .gt-card {
 }
 html.glass-google.gt-light.gt-solid .gt-box,
 html.glass-google.gt-light.gt-solid .gt-card { background: rgba(252, 252, 254, .97) !important; }
+
+/* Widget tiles off on the new tab: results drop their glass card too and sit on the
+   wallpaper. The spacing stays, so nothing moves; a soft shadow keeps the text readable. */
+html.glass-google.gt-notiles .gt-card { background: none !important; border-color: transparent !important; box-shadow: none !important; backdrop-filter: none !important; }
+html.glass-google.gt-notiles .gt-card { text-shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 0 10px rgba(0, 0, 0, .3); }
+html.glass-google.gt-notiles.gt-light .gt-card { text-shadow: 0 1px 2px rgba(255, 255, 255, .8), 0 0 10px rgba(255, 255, 255, .6); }

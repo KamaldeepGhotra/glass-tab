@@ -29,6 +29,7 @@
     root.style.setProperty('--gt-blur', `${look.blur}px`);
     root.style.setProperty('--gt-tint', String(look.tint / 100));
     root.classList.toggle('gt-solid', !!look.solid);
+    root.classList.toggle('gt-notiles', look.tiles === false);
   }
   setMode(ggLight ?? matchMedia('(prefers-color-scheme: light)').matches); // best guess until the page loads
 

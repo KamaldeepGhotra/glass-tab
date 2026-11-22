@@ -18,7 +18,7 @@ const PRESETS = {
   silk:     scene('Silk', 'silk', '#0b0614', ['#ff5ea8', '#7a3cff', '#20d4c4']),
   lights:   scene('Northern lights', 'lights', '#030914', ['#3de6aa', '#8a6bff', '#2f8cff']),
   lava:     scene('Lava', 'lava', '#14051d', ['#ff4f7b', '#ff9a3c', '#9646ff']),
-  lamp:     scene('Lava lamp', 'lamp', '#160510', ['#ff4a1c', '#ff2d6f', '#ffb02e']),
+  lamp:     scene('Lava lamp', 'lamp', '#140726', ['#ff3d8b', '#3a1067', '#ffb3d1']),
   aurora:   { name: 'Aurora',   base: '#05080d', c: ['#12a4b8', '#6a30d8', '#1db87f'] },
   sunset:   { name: 'Sunset',   base: '#0e0707', c: ['#ff6a3d', '#c4195e', '#ffad42'] },
   neon:     { name: 'Neon',     base: '#07050f', c: ['#ff2e93', '#6200ff', '#00d9ff'] },
@@ -31,7 +31,7 @@ const LIGHT_PRESETS = {
   silk:    scene('Silk', 'silk', '#f7f3fb', ['#ff8fbd', '#9d84ff', '#5fcfe0']),
   lights:  scene('Northern lights', 'lights', '#eef4fb', ['#2fc79a', '#8b78ff', '#4a9cff']),
   lava:    scene('Lava', 'lava', '#fdf0f3', ['#ff8fae', '#ffb877', '#b796ff']),
-  lamp:    scene('Lava lamp', 'lamp', '#fff3ea', ['#ff6a3d', '#f2427f', '#ffab3d']),
+  lamp:    scene('Lava lamp', 'lamp', '#f6f1fc', ['#ff5f9e', '#d9c8f5', '#ffc6df']),
   mist:    { name: 'Mist',    base: '#edf1f9', c: ['#86aaff', '#c39bff', '#73d9e4'] },
   prism:   { name: 'Prism',   base: '#f4f2fb', c: ['#ff8ab5', '#78acff', '#8eeec4'] },
 };
@@ -124,14 +124,16 @@ function waveURL(p) {
     + (blend ? `<g style="mix-blend-mode:${blend}">${layers.join('')}</g>` : layers.join(''));
   return (waveCache[key] = `url("data:image/svg+xml,${encodeURIComponent(svgOf(defs, inner, wrap))}")`);
 }
-// Lava lamp: blobs of warm wax rise, stretch tall and thin while they move, and sink back,
-// melting into each other and into pools at the top and bottom. Each pixel adds up how
-// close it is to every blob (a "metaball" field); where the sum passes 1 it's wax. It's
-// drawn on a small canvas the page stretches to full size: the wax is soft anyway, so this
-// looks smooth and takes a few milliseconds a frame.
+// Lava lamp, seen from inside the glass: liquid glowing from the bulb at the bottom, and
+// glossy blobs of wax that rise, stretch a little while they move, sink back and rest in a
+// pool on the bottom. Each pixel adds up how close it is to every blob (a "metaball"
+// field, made so it stays smooth at each blob's middle); where the sum passes 1 it's wax. The slope of that field gives each blob a
+// rounded surface, so it can be lit from the bulb below and catch a shine near the top.
+// Colors: background = liquid at the top, c[0] = wax, c[1] = liquid glow at the bottom,
+// c[2] = the wax where the light hits it.
 const LAMP_BLOBS = [ // x (0 to 1), size, seconds to rise and sink, start
-  [0.16, 0.085, 34, 0], [0.3, 0.11, 46, 2.1], [0.45, 0.075, 29, 4.2], [0.57, 0.1, 52, 1.3],
-  [0.69, 0.08, 38, 3.4], [0.82, 0.095, 43, 5.1], [0.38, 0.065, 25, 0.7], [0.9, 0.065, 31, 2.8],
+  [0.17, 0.095, 34, 0], [0.31, 0.12, 46, 2.1], [0.46, 0.085, 29, 4.2], [0.58, 0.11, 52, 1.3],
+  [0.7, 0.09, 38, 3.4], [0.84, 0.105, 43, 5.1], [0.39, 0.07, 25, 0.7], [0.91, 0.075, 31, 2.8],
 ];
 const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 // Where each blob is at time t: [x, y, half width, half height], with x running 0 to the
@@ -139,31 +141,46 @@ const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)
 function lampBlobs(aspect, t) {
   const blobs = LAMP_BLOBS.map(([x, r, sec, start]) => {
     const a = 2 * Math.PI * t / sec + start;
-    const stretch = 1 + 0.65 * Math.abs(Math.cos(a)); // fastest mid-way, so tallest there
-    return [x * aspect + 0.03 * Math.sin(a * 1.7 + start), 0.52 - 0.47 * Math.sin(a), r / Math.sqrt(stretch), r * stretch];
+    const stretch = 1 + 0.45 * Math.abs(Math.cos(a)); // fastest mid-way, so tallest there
+    return [x * aspect + 0.03 * Math.sin(a * 1.7 + start), 0.5 - 0.44 * Math.sin(a), r / Math.sqrt(stretch), r * stretch];
   });
-  // Pools resting on the bottom and hanging from the top, gently swelling.
-  blobs.push([0.5 * aspect, 1.13 + 0.02 * Math.sin(t / 9), 0.75 * aspect, 0.2], [0.5 * aspect, -0.1, 0.6 * aspect, 0.11 + 0.015 * Math.sin(t / 7)]);
+  // The pool resting on the bottom, gently swelling.
+  blobs.push([0.5 * aspect, 1.14 + 0.02 * Math.sin(t / 9), 0.8 * aspect, 0.2]);
   return blobs;
 }
-// The graphics card draws it at the screen's full sharpness: the same sums as drawLamp
-// below, once per pixel. Returns null where WebGL isn't available.
+// One pixel's color, shared by the graphics card version (as GLSL) and the fallback (as JS)
+// so both look the same. f: the field; gx, gy: its slope; px: one pixel in field units.
 const LAMP_SHADER = `precision highp float;
-uniform vec2 res; uniform vec4 blobs[10]; uniform vec3 base, low, mid, high; uniform float dark;
+uniform vec2 res; uniform vec4 blobs[9]; uniform vec3 top, wax, glow, hot; uniform float dark;
 void main() {
   float ny = 1.0 - gl_FragCoord.y / res.y, nx = gl_FragCoord.x / res.y;
-  float f = 0.0;
-  for (int i = 0; i < 10; i++) { vec2 d = vec2((nx - blobs[i].x) / blobs[i].z, (ny - blobs[i].y) / blobs[i].w); f += 1.0 / (dot(d, d) + 0.0001); }
-  vec3 wax = ny > 0.5 ? mix(low, mid, (1.0 - ny) * 2.0) : mix(mid, high, (0.5 - ny) * 2.0);
-  float glowRow = 0.1 * (1.0 - abs(ny - 0.55) * 1.6);
-  float inside = clamp((f - 0.96) / 0.08, 0.0, 1.0);
-  float core = clamp((f - 1.2) / 3.0, 0.0, 1.0) * mix(0.2, 0.35, dark);
-  float glow = min(1.0, f * 0.18) * mix(0.12, 0.3, dark) + glowRow * mix(0.4, 1.0, dark);
-  vec3 bg = base + (mid - base) * glow;
+  float f = 0.0; vec2 g = vec2(0.0);
+  for (int i = 0; i < 9; i++) {
+    vec2 d = vec2((nx - blobs[i].x) / blobs[i].z, (ny - blobs[i].y) / blobs[i].w);
+    float q = 1.3 / (dot(d, d) + 0.3);
+    f += q; g -= 2.0 * q * q / 1.3 * vec2(d.x / blobs[i].z, d.y / blobs[i].w);
+  }
+  // Liquid: dark at the top, glowing toward the bulb, warmed near the wax.
+  vec3 liquid = mix(top, glow, pow(ny, 1.6));
+  liquid = mix(liquid, wax, min(0.45, f * 0.08) * mix(0.55, 1.0, dark));
+  // Wax: a rounded surface lit from below, darker at its rim, with a shine up and to the left.
+  // Shade it as a ball: turn the field back into a sphere's height (1 at the middle, 0 at
+  // the edge) and use that height's slope, so the middle faces you and the edge turns away.
+  float h = sqrt(max(1.3 - 1.3 / max(f, 1.0), 0.0025));
+  vec3 n = normalize(vec3(-0.065 * g / (max(f, 1.0) * max(f, 1.0) * h), 1.0));
+  float lit = clamp(dot(n, normalize(vec3(0.0, 0.75, 0.66))), 0.0, 1.0);
+  float shine = pow(clamp(dot(n, normalize(vec3(-0.45, -0.55, 0.7))), 0.0, 1.0), 28.0);
+  vec3 w = mix(wax, hot, lit * 0.7) * (0.72 + 0.36 * lit);
+  w = mix(w * 0.8, w, smoothstep(1.0, 1.8, f)) + shine * 0.5;
+  // A crisp edge: about one screen pixel wide, however big the blob.
+  float e = max(length(g) / res.y, 0.002);
+  float inside = smoothstep(1.0 - e, 1.0 + e, f);
   // A whisper of noise hides the steps in very gentle gradients (banding).
   float noise = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
-  gl_FragColor = vec4(mix(bg, wax + (1.0 - wax) * core, inside) + noise, 1.0);
+  gl_FragColor = vec4(mix(liquid, w, inside) + noise, 1.0);
 }`;
+// The graphics card draws it at the screen's full sharpness. Returns null where WebGL
+// isn't available.
 function lampGL(cv, keep = false) {
   const gl = cv.getContext('webgl', { antialias: false, preserveDrawingBuffer: keep });
   if (!gl) return null;
@@ -183,7 +200,7 @@ function lampGL(cv, keep = false) {
     gl.viewport(0, 0, cv.width, cv.height);
     gl.uniform2f(u('res'), cv.width, cv.height);
     gl.uniform4fv(u('blobs'), lampBlobs(cv.width / cv.height, t).flat());
-    ['base', 'low', 'mid', 'high'].forEach((n, i) => gl.uniform3fv(u(n), hexToRgb(i ? p.c[i - 1] : p.base).map((v) => v / 255)));
+    [['top', p.base], ['wax', p.c[0]], ['glow', p.c[1]], ['hot', p.c[2]]].forEach(([n, hex]) => gl.uniform3fv(u(n), hexToRgb(hex).map((v) => v / 255)));
     gl.uniform1f(u('dark'), isDark(p.base) ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   };
@@ -193,29 +210,31 @@ function lampGL(cv, keep = false) {
 function drawLamp(cv, p, t) {
   const W = cv.width, H = cv.height, aspect = W / H;
   const ctx = cv.getContext('2d'), img = ctx.createImageData(W, H), px = img.data;
-  const base = hexToRgb(p.base), [low, mid, high] = p.c.map(hexToRgb), dark = isDark(p.base);
+  const [top, wax, glow, hot] = [p.base, ...p.c].map(hexToRgb), dark = isDark(p.base);
   const blobs = lampBlobs(aspect, t);
+  const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+  const L1 = [0, 0.75, 0.66].map((v, _, a) => v / Math.hypot(...a)), L2 = [-0.45, -0.55, 0.7].map((v, _, a) => v / Math.hypot(...a));
   for (let j = 0, o = 0; j < H; j++) {
     const ny = j / H;
-    // Wax is hottest (brightest) low down and cools toward the top.
-    const wax = ny > 0.5 ? low.map((v, k) => v + (mid[k] - v) * (1 - ny) * 2) : mid.map((v, k) => v + (high[k] - v) * (0.5 - ny) * 2);
-    const glowRow = 0.1 * (1 - Math.abs(ny - 0.55) * 1.6);
     for (let i = 0; i < W; i++, o += 4) {
       const nx = i / H;
-      let f = 0;
+      let f = 0, gx = 0, gy = 0;
       for (const [bx, by, rx, ry] of blobs) {
-        const dx = (nx - bx) / rx, dy = (ny - by) / ry;
-        f += 1 / (dx * dx + dy * dy + 0.0001);
+        const dx = (nx - bx) / rx, dy = (ny - by) / ry, q = 1.3 / (dx * dx + dy * dy + 0.3);
+        f += q; gx -= 2 * q * q / 1.3 * dx / rx; gy -= 2 * q * q / 1.3 * dy / ry;
       }
-      const inside = Math.min(1, Math.max(0, (f - 0.9) / 0.25)); // soft edge
-      const core = Math.min(1, Math.max(0, (f - 1.2) / 3)) * (dark ? 0.35 : 0.2); // lit from inside
-      const glow = Math.min(1, f * 0.18) * (dark ? 0.3 : 0.12) + glowRow * (dark ? 1 : 0.4);
-      for (let k = 0; k < 3; k++) {
-        const bg = base[k] + (mid[k] - base[k]) * glow;
-        const w = wax[k] + (255 - wax[k]) * core;
-        px[o + k] = bg + (w - bg) * inside;
-      }
-      px[o + 3] = 255;
+      let liquid = mix(top, glow, ny ** 1.6);
+      liquid = mix(liquid, wax, Math.min(0.45, f * 0.08) * (dark ? 1 : 0.55));
+      const ff = Math.max(f, 1), hh = Math.sqrt(Math.max(1.3 - 1.3 / ff, 0.0025)), k = 0.065 / (ff * ff * hh);
+      const nl = Math.hypot(gx * k, gy * k, 1), n = [-gx * k / nl, -gy * k / nl, 1 / nl];
+      const dot = (a, b) => Math.max(0, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
+      const lit = dot(n, L1), shine = dot(n, L2) ** 28;
+      let w = mix(wax, hot, lit * 0.7).map((v) => v * (0.72 + 0.36 * lit));
+      const rim = Math.min(1, Math.max(0, (f - 1) / 0.8));
+      w = w.map((v) => v * (0.8 + 0.2 * rim) + shine * 0.5 * 255);
+      const inside = Math.min(1, Math.max(0, (f - 0.9) / 0.2));
+      const c = mix(liquid, w, inside);
+      px[o] = c[0]; px[o + 1] = c[1]; px[o + 2] = c[2]; px[o + 3] = 255;
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -656,7 +675,7 @@ function applyLook() {
   // Shared with the Glass Google content script, which picks the mode Google is in.
   const pd = presetFor('dark'), pl = presetFor('light');
   const wave = (p) => (layered(p) ? waveURL(p) : p.scene === 'lamp' ? lampURL(p) : null);
-  const look = { dark: { base: pd.base, c: pd.c, wave: wave(pd) }, light: { base: pl.base, c: pl.c, wave: wave(pl) }, blur: S.blur, tint: S.tint, solid: S.solidGlass };
+  const look = { dark: { base: pd.base, c: pd.c, wave: wave(pd) }, light: { base: pl.base, c: pl.c, wave: wave(pl) }, blur: S.blur, tint: S.tint, solid: S.solidGlass, tiles: S.tiles };
   if (hasChrome && JSON.stringify(look) !== lastLook) { lastLook = JSON.stringify(look); chrome.storage.local.set({ look }); }
 }
 lightQuery.addEventListener('change', () => { if (S.appearance === 'auto') { applyLook(); syncPanel(); } });
@@ -2562,6 +2581,14 @@ const TOUR_SETUP = {
     const sync = h('button', { class: 'linkish', onclick: () => { endTour(); openPanelAt('todo', '#todoSource'); } }, 'Use Todoist, Microsoft To Do or Google Tasks instead');
     return [task, status, sync];
   },
+  // Glass tiles or see-through: switches live, so the choice is made by looking.
+  tiles() {
+    const pick = (on) => h('button', { class: S.tiles === on ? 'on' : '', onclick: (e) => {
+      S.tiles = on; update();
+      e.target.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === e.target));
+    } }, on ? 'Glass tiles' : 'See-through');
+    return [h('div', { class: 'chips' }, pick(true), pick(false))];
+  },
   google() {
     const status = h('div', { class: 'muted tour-status' });
     const btn = h('button', { class: 'chip primary', onclick: async () => {
@@ -2583,6 +2610,7 @@ const TOUR = [
   { el: widgetEl('todo'), when: () => placed('todo'), title: 'To-do', text: 'Add a task or two. Click a task later to edit it.', setup: 'todo' },
   { el: widgetEl('sites'), when: () => placed('sites'), title: 'Top sites', text: 'The sites you visit most show up here. For sites you choose yourself, add the Pinned sites widget.' },
   { el: widgetEl('pinned'), when: () => placed('pinned'), title: 'Pinned sites', text: 'Add site keeps a site of your choice here. Hover over one and click × to remove it.' },
+  { el: '#widgets', title: 'Tiles or see-through', text: 'Widgets can sit on glass tiles, or right on the wallpaper. Try both and keep the one you like. You can switch any time in Customize › Glass.', setup: 'tiles' },
   { el: '#widgets', title: 'Move and resize', text: 'Press and hold any widget to move it. While editing, the S, M and L buttons change its size and × removes it. Removed something by mistake? Undo shows for a few seconds.' },
   { el: '#search', title: 'Search', text: `Search Google or type a website here. Press / to jump here. On any other site, press ${SHORTCUT} to bring up the same glass search bar.` },
   { el: '#gear', title: 'Customize', text: 'This round button in the corner opens Customize: wallpapers (or your own photo), light or dark, motion, glass, the clock, widgets and more. The box at the top finds any setting.' },
@@ -2593,7 +2621,7 @@ const TOUR = [
 ];
 // What's new: one quiet line after an update, offered once to people who already took the
 // setup tour. Raise NEWS_ID (and change the line in newtab.html) when there's something new.
-const NEWS_ID = '1.0.9';
+const NEWS_ID = '1.1.0';
 let activeTour = TOUR;
 const tourSteps = () => activeTour.filter((s) => !s.when || s.when());
 let tourStep = -1;
@@ -2686,7 +2714,12 @@ function closeNews() {
   $('#newsTip').hidden = true;
   try { localStorage.setItem('glassTabNews', NEWS_ID); } catch {}
 }
-$('#newsTipLook').addEventListener('click', () => { closeNews(); openPanelAt('wallpaper', '#swatches'); });
+$('#newsTipLook').addEventListener('click', () => {
+  closeNews();
+  S.tiles = false; update();
+  toast('See-through is on. Switch back any time in Customize › Glass.', () => { S.tiles = true; update(); });
+});
+$('#newsTipKeep').addEventListener('click', closeNews);
 $('#newsTipClose').addEventListener('click', closeNews);
 function showFooterTip() {
   try { if (!localStorage.getItem('glassTabFooterTip')) $('#footerTip').hidden = false; } catch {}

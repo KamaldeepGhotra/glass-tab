@@ -24,10 +24,10 @@ Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass T
 
 If the dashboard says it can't submit, click **Why can't I submit?** at the top. It lists the boxes that are empty.
 
-**Current version:** 1.0.9, zip `store/glass-tab-1.0.9.zip`.
-**Since the last listing update:** for 1.0.9 the Description mentions Pinned sites and see-through
-widgets. Paste it into **Store listing**. The privacy policy page now says "Pinned sites"; no
-permissions changed, so the **Privacy** tab in the dashboard doesn't change.
+**Current version:** 1.1.0, zip `store/glass-tab-1.1.0.zip`.
+**Since the last listing update:** 1.1.0 redraws the lava lamp, lets Glass Google results go
+see-through with the widgets, and adds a tour step and a What's new card for see-through
+widgets. The Description already covers these; no permission or privacy changes.
 **Screenshots:** the five in `store/` were taken for 1.0.7 and are already uploaded; nothing to change.
 
 ---

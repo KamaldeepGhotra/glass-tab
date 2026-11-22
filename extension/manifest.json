@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Glass Tab",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "A liquid-glass new tab with a lock-screen clock, widgets and wallpapers, plus a glass search bar and glass Google results.",
   "icons": {
     "16": "icons/icon16.png",
