@@ -12,7 +12,7 @@ Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass T
 
 1. **Raise the version** in `extension/manifest.json` (for example `1.0.3` → `1.0.4`). The store
    rejects a package with the same version as the last one.
-2. **Build the zip**, from the `glass_Chrome_Extenstion` folder:
+2. **Build the zip**, from the `glass-tab` folder:
    ```
    V=$(python3 -c "import json;print(json.load(open('extension/manifest.json'))['version'])") && rm -f store/glass-tab-*.zip && (cd extension && zip -qr -X "../store/glass-tab-$V.zip" . -x '.*') && echo "Built store/glass-tab-$V.zip"
    ```
