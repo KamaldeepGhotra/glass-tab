@@ -24,10 +24,13 @@ Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass T
 
 If the dashboard says it can't submit, click **Why can't I submit?** at the top. It lists the boxes that are empty.
 
-**Current version:** 1.1.0, zip `store/glass-tab-1.1.0.zip`.
-**Since the last listing update:** 1.1.0 redraws the lava lamp, lets Glass Google results go
-see-through with the widgets, and adds a tour step and a What's new card for see-through
-widgets. The Description already covers these; no permission or privacy changes.
+**Current version:** 1.1.1, zip `store/glass-tab-1.1.1.zip`.
+**Since the last listing update:** 1.1.1 adds Customize › Feedback (sent by email through
+Web3Forms), city suggestions while typing in Weather, and stops the ⌘⇧K search bar setting off
+a site's own keyboard shortcuts (YouTube's Space, M, F). Update the **Description** (one line
+under "Easy to set up") and **Privacy › Data usage** (tick Personally identifiable information,
+for the optional reply email). No permission changes. The privacy policy page is updated too:
+push `docs/privacy.html` before submitting.
 **Screenshots:** the five in `store/` were taken for 1.0.7 and are already uploaded; nothing to change.
 
 ---
@@ -60,7 +63,7 @@ Wallpapers that move
 • Follows your system's light or dark mode automatically
 
 Widgets that fit your day
-• Weather with the next 24 hours, Calendar (Google or iCloud), To-do, Notes, Countdown, Focus timer, Top sites and Recently closed tabs
+• Weather with the next 24 hours and place suggestions as you type, Calendar (Google or iCloud), To-do, Notes, Countdown, Focus timer, Top sites and Recently closed tabs
 • Keep your own sites in Pinned sites, and open calendar events with a click
 • Widgets can sit on glass tiles or right on the wallpaper
 • Pick a size for each one, then press and hold to move them around
@@ -75,6 +78,7 @@ Glass everywhere you search
 
 Easy to set up
 • Search your settings, reset any section, and back them up to a file
+• Send an idea or a bug report right from Customize
 
 Private by design
 • No account, no ads, no tracking. Your settings and notes stay in Chrome.
@@ -193,11 +197,11 @@ tasks.googleapis.com, graph.microsoft.com and login.microsoftonline.com: sign in
 
 ### Data usage
 
-Tick only these three. Leave every other box unticked.
+Tick only these four. Leave every other box unticked.
 
 | Box | Tick? | Why |
 | --- | --- | --- |
-| Personally identifiable information | no | |
+| **Personally identifiable information** | **yes** | the email address a user may add to feedback so they can get a reply; sent only when they press Send |
 | Health information | no | |
 | Financial and payment information | no | |
 | **Authentication information** | **yes** | the token for a to-do app the user connects, kept on their computer |

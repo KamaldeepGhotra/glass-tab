@@ -354,6 +354,8 @@ main { zoom: var(--ui-scale, 1); height: 100%; display: flex; flex-direction: co
 .slider, .field { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
 .slider input { width: 190px; accent-color: var(--fg); }
 .field input, .field select { width: 170px; background: rgba(var(--ink), .07); border: 1px solid rgba(var(--ink), .14); border-radius: 10px; color: var(--fg); padding: 6px 10px; font: inherit; }
+textarea.fb { display: block; width: 100%; box-sizing: border-box; margin: 4px 0 6px; resize: vertical; background: rgba(var(--ink), .07); border: 1px solid rgba(var(--ink), .14); border-radius: 10px; color: var(--fg); padding: 8px 10px; font: inherit; font-size: 13px; user-select: text; -webkit-user-select: text; }
+textarea.fb::placeholder { color: rgba(var(--ink), .5); }
 .toggle { display: flex; align-items: center; gap: 8px; margin: 6px 0; cursor: pointer; }
 .toggle input { accent-color: var(--fg); }
 .note { font-size: 12px; opacity: .7; margin: -4px 0 8px; }
@@ -370,10 +372,6 @@ main { zoom: var(--ui-scale, 1); height: 100%; display: flex; flex-direction: co
 #newsTip h2 { margin: 0; font-size: 15px; font-weight: 600; }
 #newsTip p { margin: 4px 0 10px; opacity: .85; line-height: 1.4; }
 #newsTipClose { margin: 0; font-size: 18px; line-height: 1; padding: 0 4px; }
-.news-shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.news-shots figure { margin: 0; }
-.news-shots img { display: block; width: 100%; height: auto; border-radius: 10px; outline: 1px solid rgba(var(--ink), .12); outline-offset: -1px; }
-.news-shots figcaption { margin-top: 4px; font-size: 11px; opacity: .75; text-align: center; }
 .news-btns { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
 .news-btns .linkish { margin: 0; }
 #footerTip .chip { flex: none; }

@@ -212,15 +212,24 @@
   function toggle() { host.style.display === 'none' ? open() : close(); }
 
   input.addEventListener('input', update);
-  input.addEventListener('keydown', (e) => {
+  function onKey(e) {
     if (e.key === 'Escape') { e.preventDefault(); close(); }
     else if (e.key === 'ArrowDown' && items.length) { e.preventDefault(); sel = (sel + 1) % items.length; render(); }
     else if (e.key === 'ArrowUp' && items.length) { e.preventDefault(); sel = (sel - 1 + items.length) % items.length; render(); }
     else if (e.key === 'Enter' && items[sel]) { e.preventDefault(); run(items[sel]); }
-  });
+  }
   root.querySelector('.scrim').addEventListener('click', close);
-  // Keep the page's own keyboard shortcuts from firing while typing in the bar.
-  for (const type of ['keydown', 'keyup', 'keypress']) host.addEventListener(type, (e) => e.stopPropagation());
+  // Keep the page's own keyboard shortcuts (YouTube's Space, M, F...) from firing
+  // while typing in the bar. Sites listen on document or in the capture phase, so
+  // catch keys first, on window, handle them here, and stop them going further.
+  // Typing still works: stopping the event doesn't cancel its default action.
+  for (const type of ['keydown', 'keyup', 'keypress']) {
+    window.addEventListener(type, (e) => {
+      if (!e.composedPath().includes(host)) return;
+      if (type === 'keydown') onKey(e);
+      e.stopImmediatePropagation();
+    }, true);
+  }
 
   document.documentElement.append(host);
   window.__glassBar = { toggle };

@@ -444,7 +444,10 @@ const DEFAULTS = {
 };
 // Where "Share an idea" and the page after uninstalling go. Keep in step with background.js.
 const FEEDBACK_URL = 'https://github.com/KamaldeepGhotra/glass-tab/issues/new';
-const STORE_REVIEWS = 'https://chromewebstore.google.com/detail/fhjfmkjhchflbbgklhabbgomnkadcmlp/reviews';
+// Feedback typed in Customize is emailed by Web3Forms. The key only lets people send
+// to the one inbox it was made for, so it's safe to ship in the extension.
+const WEB3FORMS_KEY = '32e22d89-ef1b-4072-93f0-3b415ef0ee3d';
+const STORE_REVIEWS ='https://chromewebstore.google.com/detail/fhjfmkjhchflbbgklhabbgomnkadcmlp/reviews';
 
 const $ = (s) => document.querySelector(s);
 const hasChrome = typeof chrome !== 'undefined' && !!chrome.storage;
@@ -815,21 +818,23 @@ function wxLabel(code) {
 // Finds a typed city. "London, ON", "London ON" or "Paris, France" pick the right
 // one: the last part is matched against the region (name, start of it, or its
 // initials, so ON = Ontario and BC = British Columbia) and the country.
+// "San Francisco, CA, USA" checks each part; zip and postal codes are skipped.
 async function findCity(text) {
   const search = async (name) => (await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=20`)).json()).results || [];
   const parts = text.includes(',') ? text.split(',').map((x) => x.trim()) : [text];
-  let name = parts[0], region = parts.slice(1).join(' ');
+  let name = parts[0], regions = parts.slice(1);
   let results = await search(name);
-  if (!results.length && !region && /\s/.test(text)) {
+  if (!results.length && !regions.length && /\s/.test(text)) {
     // "London ON": try the last word as the region.
     name = text.replace(/\s+\S+$/, '');
-    region = text.split(/\s+/).pop();
+    regions = [text.split(/\s+/).pop()];
     results = await search(name);
   }
-  if (region) {
-    const want = region.toLowerCase().replace(/\./g, '');
-    const alias = { uk: 'gb', usa: 'us' }[want] || want;
-    const initials = (x = '') => x.split(/\s+/).map((w) => w[0]).join('').toLowerCase();
+  const initials = (x = '') => x.split(/\s+/).map((w) => w[0]).join('').toLowerCase();
+  for (const region of regions) {
+    const want = region.toLowerCase().replace(/\./g, '').replace(/\s*\d[\d-]*$/, '').trim(); // "CA 94043" → "ca"
+    if (!want) continue;
+    const alias = { uk: 'gb', usa: 'us', 'united states of america': 'us' }[want] || want;
     const fits = (r) => [r.admin1, r.country].some((x) => x && (x.toLowerCase() === want || x.toLowerCase().startsWith(want) || initials(x) === want))
       || r.country_code?.toLowerCase() === alias;
     results = results.filter(fits);
@@ -2066,6 +2071,22 @@ function buildPanel() {
   bind('#greetingSize', 'greetingSize', 'value', Number);
   bind('#name', 'name', 'value', (v) => v.trim());
   $('#city').addEventListener('change', (e) => { S.city = e.target.value.trim(); S.useLocation = false; update(); renderWidgets(); });
+  // Suggest places while typing ("Fresno, California, United States"); picking one uses it straight away.
+  let cityTimer;
+  $('#city').addEventListener('input', (e) => {
+    const q = e.target.value.trim(), list = $('#cityList');
+    if ([...list.options].some((o) => o.value === q)) { e.target.dispatchEvent(new Event('change')); return; }
+    clearTimeout(cityTimer);
+    if (q.length < 2) return;
+    cityTimer = setTimeout(async () => {
+      try {
+        const j = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q.split(',')[0])}&count=8`)).json();
+        if ($('#city').value.trim() !== q) return; // you've typed more since
+        const names = [...new Set((j.results || []).map((r) => [r.name, r.admin1, r.country].filter(Boolean).join(', ')))];
+        list.replaceChildren(...names.map((n) => h('option', { value: n })));
+      } catch {}
+    }, 250);
+  });
   $('#units').addEventListener('change', (e) => { S.units = e.target.value; update(); renderWidgets(); });
   $('#useLocation').addEventListener('click', useMyLocation);
   $('#glassGoogle').addEventListener('change', (e) => setGlassGoogle(e.target.checked));
@@ -2081,6 +2102,7 @@ function buildPanel() {
   $('#exportSettings').addEventListener('click', exportSettings);
   $('#importSettings').addEventListener('click', () => $('#importFile').click());
   $('#importFile').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importSettings(f); });
+  $('#fbSend').addEventListener('click', sendFeedback);
 
   const panel = $('#panel'), gear = $('#gear');
   gear.addEventListener('click', () => setPanel(panel.hidden));
@@ -2248,6 +2270,35 @@ async function loadPhoto() {
 // ---------- settings backup ----------
 // Export saves the settings as a file; Import reads one back. Sign-ins, calendar links
 // and the photo stay on this computer and aren't in the file.
+// Sends what you typed (and your email, only if you add one) as an email to the
+// developer. The subject is always the same so it can be filtered into its own folder.
+async function sendFeedback() {
+  const text = $('#fbText').value.trim(), email = $('#fbEmail').value.trim();
+  const btn = $('#fbSend'), note = $('#fbNote');
+  if (!text) { note.textContent = 'Write something first.'; return; }
+  if (email && !$('#fbEmail').checkValidity()) { note.textContent = "That email doesn't look right."; return; }
+  const form = new FormData();
+  form.append('access_key', WEB3FORMS_KEY);
+  form.append('subject', '[Glass Tab] Feedback');
+  form.append('from_name', 'Glass Tab');
+  form.append('message', text);
+  if (email) form.append('email', email);
+  form.append('version', hasChrome ? chrome.runtime.getManifest().version : '');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  note.textContent = '';
+  try {
+    const j = await (await fetch('https://api.web3forms.com/submit', { method: 'POST', body: form, headers: { Accept: 'application/json' } })).json();
+    if (!j.success) throw new Error(j.message);
+    $('#fbText').value = '';
+    note.textContent = 'Sent. Thank you!';
+  } catch {
+    note.textContent = "Couldn't send. Check you're online and try again.";
+  }
+  btn.disabled = false;
+  btn.textContent = 'Send feedback';
+}
+
 function exportSettings() {
   const day = new Date().toISOString().slice(0, 10);
   const file = { app: 'Glass Tab', version: hasChrome ? chrome.runtime.getManifest().version : '', saved: new Date().toISOString(), settings: S };
@@ -2427,6 +2478,7 @@ function drawSummaries() {
   set('#sumWeather', S.useLocation ? S.coordsName || 'Your location' : S.city || 'No city yet');
   set('#sumChrome', `Glass Google ${googleOn ? 'on' : 'off'}`);
   set('#sumBackup', 'Export or import');
+  set('#sumFeedback', 'Ideas and bugs');
 }
 
 function syncPanel() {
@@ -2621,7 +2673,7 @@ const TOUR = [
 ];
 // What's new: one quiet line after an update, offered once to people who already took the
 // setup tour. Raise NEWS_ID (and change the line in newtab.html) when there's something new.
-const NEWS_ID = '1.1.0';
+const NEWS_ID = '1.1.1';
 let activeTour = TOUR;
 const tourSteps = () => activeTour.filter((s) => !s.when || s.when());
 let tourStep = -1;
@@ -2716,8 +2768,7 @@ function closeNews() {
 }
 $('#newsTipLook').addEventListener('click', () => {
   closeNews();
-  S.tiles = false; update();
-  toast('See-through is on. Switch back any time in Customize › Glass.', () => { S.tiles = true; update(); });
+  openPanelAt('feedback', '#fbText');
 });
 $('#newsTipKeep').addEventListener('click', closeNews);
 $('#newsTipClose').addEventListener('click', closeNews);
