@@ -25,13 +25,22 @@
       root.classList.toggle('gt-wavy', !!p.wave);
     }
   }
-  if (look) {
+  function setGlass() {
+    if (!look) return;
     root.style.setProperty('--gt-blur', `${look.blur}px`);
     root.style.setProperty('--gt-tint', String(look.tint / 100));
     root.classList.toggle('gt-solid', !!look.solid);
     root.classList.toggle('gt-notiles', look.tiles === false);
   }
+  setGlass();
   setMode(ggLight ?? matchMedia('(prefers-color-scheme: light)').matches); // best guess until the page loads
+  // A wallpaper or glass change on the new tab reaches open Google tabs right away.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes.look) return;
+    look = changes.look.newValue;
+    setGlass();
+    setMode(root.classList.contains('gt-light'));
+  });
 
   const lum = (color) => {
     const m = color.match(/[\d.]+/g);

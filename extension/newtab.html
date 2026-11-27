@@ -33,9 +33,9 @@
   </div>
 
   <div id="newsTip" class="glass" hidden role="dialog" aria-labelledby="newsTitle">
-    <div class="news-head"><h2 id="newsTitle">New: tell us what you think</h2><button id="newsTipClose" class="linkish" aria-label="Dismiss">×</button></div>
-    <p>Send an idea or a bug straight from Customize › Feedback. Weather now suggests places as you type, and the ⌘⇧K search bar no longer sets off the page's own shortcuts.</p>
-    <div class="news-btns"><button id="newsTipLook" class="chip primary">Send feedback</button><button id="newsTipKeep" class="linkish">Not now</button></div>
+    <div class="news-head"><h2 id="newsTitle">New: a smarter search bar</h2><button id="newsTipClose" class="linkish" aria-label="Dismiss">×</button></div>
+    <p>The ⌘⇧K search bar now finds your top sites, can find bookmarks and history, and converts units (try 5 km in mi). You can also keep up to five countdowns, take breaks in Focus, and see a heads-up when rain is coming.</p>
+    <div class="news-btns"><button id="newsTipLook" class="chip primary">Search bookmarks too</button><button id="newsTipKeep" class="linkish">Not now</button></div>
   </div>
 
   <div id="toast" class="glass" hidden role="status" aria-live="polite">
@@ -220,10 +220,12 @@
       <p class="note credit">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0). Town names by <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a>.</p>
     </details>
 
-    <details class="group" data-group="chrome" data-words="google search footer top bar theme">
+    <details class="group" data-group="chrome" data-words="google search footer top bar theme bookmarks history shortcut">
       <summary><span>Chrome and Google</span><span class="sum" id="sumChrome"></span></summary>
       <label class="toggle"><input type="checkbox" id="glassGoogle"> Glass Google search results</label>
       <p class="note" id="googleNote">Works on google.com in light and dark mode. Chrome will ask to let Glass Tab change google.com. Reload Google after turning it on.</p>
+      <label class="toggle"><input type="checkbox" id="barMore"> Search bar finds bookmarks and history</label>
+      <p class="note" id="barMoreNote">The ⌘⇧K search bar always finds your open tabs and top sites. Turn this on to find bookmarks and pages you've visited too. Chrome will ask first. Nothing leaves your computer.</p>
       <h3 class="sub">Top bar</h3>
       <div id="topBar" class="chips">
         <button data-bar="chrome">Chrome's own</button>

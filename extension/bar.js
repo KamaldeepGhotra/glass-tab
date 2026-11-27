@@ -120,12 +120,58 @@
     } catch { return null; }
   }
 
+  // Unit conversion: "5 km in mi", "20c to f", "3 cups in ml". Length, weight,
+  // volume and temperature.
+  const UNITS = {
+    length: { m: 1, km: 1000, cm: 0.01, mm: 0.001, mi: 1609.344, ft: 0.3048, in: 0.0254, yd: 0.9144 },
+    weight: { g: 1, kg: 1000, mg: 0.001, lb: 453.59237, oz: 28.349523125, st: 6350.29318 },
+    volume: { l: 1, ml: 0.001, gal: 3.785411784, qt: 0.946352946, pt: 0.473176473, cup: 0.2365882365, floz: 0.0295735295625 },
+  };
+  const UNIT_NAMES = {
+    meter: 'm', meters: 'm', metre: 'm', metres: 'm', kilometer: 'km', kilometers: 'km', kilometre: 'km', kilometres: 'km', kms: 'km',
+    centimeter: 'cm', centimeters: 'cm', millimeter: 'mm', millimeters: 'mm', mile: 'mi', miles: 'mi', foot: 'ft', feet: 'ft',
+    inch: 'in', inches: 'in', yard: 'yd', yards: 'yd', gram: 'g', grams: 'g', kilogram: 'kg', kilograms: 'kg', kgs: 'kg',
+    pound: 'lb', pounds: 'lb', lbs: 'lb', ounce: 'oz', ounces: 'oz', stone: 'st', liter: 'l', liters: 'l', litre: 'l', litres: 'l',
+    milliliter: 'ml', milliliters: 'ml', gallon: 'gal', gallons: 'gal', quart: 'qt', quarts: 'qt', pint: 'pt', pints: 'pt', cups: 'cup',
+    c: 'c', '°c': 'c', celsius: 'c', f: 'f', '°f': 'f', fahrenheit: 'f', k: 'k', kelvin: 'k',
+  };
+  const TEMPS = { c: [(v) => v, (v) => v], f: [(v) => (v - 32) * 5 / 9, (v) => v * 9 / 5 + 32], k: [(v) => v - 273.15, (v) => v + 273.15] };
+  function convert(q) {
+    const m = q.toLowerCase().replace(/,/g, '').match(/^(-?\d*\.?\d+)\s*([a-z°]+)\s+(?:in|to|as)\s+([a-z°]+)$/);
+    if (!m) return null;
+    const [, n, a, b] = m, from = UNIT_NAMES[a] || a, to = UNIT_NAMES[b] || b, v = parseFloat(n);
+    let out;
+    if (TEMPS[from] && TEMPS[to]) out = TEMPS[to][1](TEMPS[from][0](v));
+    else {
+      const kind = Object.values(UNITS).find((u) => u[from] && u[to]);
+      if (!kind) return null;
+      out = v * kind[from] / kind[to];
+    }
+    out = Number(out.toPrecision(6));
+    const label = (u) => (u === 'k' ? ' K' : TEMPS[u] ? `°${u.toUpperCase()}` : ` ${u}`);
+    return { value: out, text: `${v.toLocaleString()}${label(from)} = ${out.toLocaleString(undefined, { maximumFractionDigits: 6 })}${label(to)}` };
+  }
+
   function copy(text) {
     navigator.clipboard?.writeText(text).catch(() => {});
   }
 
+  // A web address, or text that is clearly a site: example.com, localhost:3000,
+  // 192.168.1.1:8080. Words like node.js or readme.md are searched instead.
+  // The same code is in bar.js and newtab.js: keep them in step.
+  const FILE_ENDINGS = /^(js|ts|py|md|txt|json|html?|css|exe|pdf|png|jpe?g|gif|zip|sh|rb|rs|cpp|java|php|swift|kt|mp[34]|docx?|xlsx?|pptx?)$/i;
   function looksLikeUrl(q) {
-    return /^https?:\/\//i.test(q) || (!/\s/.test(q) && /^[^.]+\.[^.]{2,}/.test(q));
+    if (/^https?:\/\//i.test(q)) return true;
+    if (/\s/.test(q)) return false;
+    const host = q.split(/[/?#]/)[0];
+    if (/^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?$/i.test(host)) return true;
+    const m = host.match(/^[^.:]+(\.[^.:]+)*\.([a-z]{2,24}|xn--[a-z0-9-]+)(:\d+)?$/i);
+    return !!m && !FILE_ENDINGS.test(m[2]);
+  }
+  // Sites on this computer or the local network usually don't have https.
+  function urlFor(q) {
+    if (/^https?:\/\//i.test(q)) return q;
+    return /^(localhost|\d{1,3}(\.\d{1,3}){3})([:/?#]|$)/i.test(q) ? `http://${q}` : `https://${q}`;
   }
 
   function render() {
@@ -134,7 +180,7 @@
       li.setAttribute('role', 'option');
       if (i === sel) li.className = 'sel';
       let icon;
-      if (it.kind === 'tab') {
+      if (it.url) {
         icon = document.createElement('img');
         icon.src = favicon(it.url);
         icon.alt = '';
@@ -160,9 +206,10 @@
     const q = input.value.trim();
     const id = ++queryId;
     if (!q) { items = []; render(); return; }
-    const result = calc(q);
+    const result = calc(q), conv = convert(q);
     const first = result !== null
       ? { kind: 'calc', title: `= ${result.toLocaleString(undefined, { maximumFractionDigits: 10 })}`, sub: 'Press Enter to copy', hint: 'Copy', value: String(result) }
+      : conv ? { kind: 'convert', title: conv.text, sub: 'Press Enter to copy', hint: 'Copy', value: String(conv.value) }
       : looksLikeUrl(q)
         ? { kind: 'url', title: q, sub: 'Open site', hint: 'Enter' }
         : { kind: 'search', title: q, sub: 'Search', hint: 'Enter' };
@@ -171,17 +218,19 @@
     render();
     const tabs = await chrome.runtime.sendMessage({ type: 'tabs', q }).catch(() => []);
     if (id !== queryId) return; // a newer keystroke already ran
-    items = [first, ...(tabs || []).map((t) => ({ kind: 'tab', id: t.id, windowId: t.windowId, url: t.url, title: t.title || t.url, sub: t.url, hint: 'Switch to tab' }))];
+    const HINTS = { tab: 'Switch to tab', site: 'Top site', bookmark: 'Bookmark', history: 'History' };
+    items = [first, ...(tabs || []).map((t) => ({ ...t, kind: t.kind || 'tab', title: t.title || t.url, sub: t.url, hint: HINTS[t.kind || 'tab'] }))];
     render();
   }
 
   function run(it) {
     const q = input.value.trim();
-    if (it.kind === 'calc') copy(it.value);
+    if (it.kind === 'calc' || it.kind === 'convert') copy(it.value);
     close();
-    if (it.kind === 'url') location.href = /^https?:\/\//i.test(q) ? q : `https://${q}`;
+    if (it.kind === 'url') location.href = urlFor(q);
     else if (it.kind === 'search') chrome.runtime.sendMessage({ type: 'search', q });
     else if (it.kind === 'tab') chrome.runtime.sendMessage({ type: 'switch', id: it.id, windowId: it.windowId });
+    else if (it.url) location.href = it.url;
   }
 
   async function open() {

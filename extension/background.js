@@ -61,12 +61,23 @@ async function openBar(tab) {
 chrome.commands.onCommand.addListener((command, tab) => { if (command === 'open-glass-bar') openBar(tab); });
 chrome.action.onClicked.addListener(openBar);
 
-// Focus timer finished, even if no new tab page is open.
+// Focus timer or break finished, even if no new tab page is open.
+// Keep BREAK_SECONDS in step with newtab.js.
+const BREAK_SECONDS = 5 * 60;
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== 'focus') return;
   const { focus: f = {} } = await chrome.storage.local.get('focus');
   const today = new Date().toDateString();
-  const done = (f.day === today ? f.done || 0 : 0) + 1;
+  const doneToday = f.day === today ? f.done || 0 : 0;
+  if (f.brk) {
+    const len = f.back || 30 * 60; // back to the focus length the user picked
+    await chrome.storage.local.set({ focus: { endAt: null, left: len, len, day: today, done: doneToday } });
+    chrome.notifications.create('focus-break', {
+      type: 'basic', iconUrl: 'icons/icon128.png', title: "Break's over", message: 'Ready for another focus session?',
+    });
+    return;
+  }
+  const done = doneToday + 1;
   const len = f.len || 30 * 60; // the length the user picked
   await chrome.storage.local.set({ focus: { endAt: null, left: len, len, day: today, done } });
   chrome.notifications.create('focus-done', {
@@ -74,16 +85,51 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     iconUrl: 'icons/icon128.png',
     title: 'Focus session done',
     message: `That's ${done} today. Time for a short break.`,
+    buttons: [{ title: 'Start a 5-minute break' }],
   });
 });
+// Clicking a focus notification opens a new tab, where the timer is.
+chrome.notifications.onClicked.addListener((id) => {
+  if (!id.startsWith('focus-')) return;
+  chrome.notifications.clear(id);
+  chrome.tabs.create({});
+});
+chrome.notifications.onButtonClicked.addListener(async (id) => {
+  if (id !== 'focus-done') return;
+  chrome.notifications.clear(id);
+  const { focus: f = {} } = await chrome.storage.local.get('focus');
+  const endAt = Date.now() + BREAK_SECONDS * 1000;
+  await chrome.storage.local.set({ focus: { ...f, brk: true, back: f.len, endAt, left: BREAK_SECONDS, len: BREAK_SECONDS } });
+  chrome.alarms.create('focus', { when: endAt });
+});
+
+// What the glass bar suggests: open tabs first, then top sites, then bookmarks and
+// history if the user allowed them (Customize › Chrome and Google). Each page once.
+async function barMatches(q, exceptTab) {
+  const has = (t) => (t.title || '').toLowerCase().includes(q) || (t.url || '').toLowerCase().includes(q);
+  const tabs = (await chrome.tabs.query({})).filter((t) => t.id !== exceptTab && has(t)).slice(0, 5)
+    .map((t) => ({ kind: 'tab', id: t.id, windowId: t.windowId, title: t.title, url: t.url }));
+  const more = await chrome.permissions.contains({ permissions: ['bookmarks', 'history'] });
+  const [top, marks, past] = await Promise.all([
+    chrome.topSites.get().catch(() => []),
+    more ? chrome.bookmarks.search(q).catch(() => []) : [],
+    more ? chrome.history.search({ text: q, startTime: 0, maxResults: 20 }).catch(() => []) : [],
+  ]);
+  const seen = new Set(tabs.map((t) => t.url));
+  const pages = [];
+  for (const [kind, list] of [['site', top.filter(has)], ['bookmark', marks], ['history', past]]) {
+    for (const p of list) {
+      if (!/^https?:/.test(p.url || '') || seen.has(p.url)) continue;
+      seen.add(p.url);
+      pages.push({ kind, title: p.title || p.url, url: p.url });
+    }
+  }
+  return [...tabs, ...pages].slice(0, 8);
+}
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === 'tabs') {
-    const q = msg.q.toLowerCase();
-    chrome.tabs.query({}).then((tabs) => reply(tabs
-      .filter((t) => t.id !== sender.tab?.id && ((t.title || '').toLowerCase().includes(q) || (t.url || '').toLowerCase().includes(q)))
-      .slice(0, 5)
-      .map((t) => ({ id: t.id, windowId: t.windowId, title: t.title, url: t.url }))));
+    barMatches(msg.q.toLowerCase(), sender.tab?.id).then(reply, () => reply([]));
     return true;
   }
   if (msg.type === 'switch') {

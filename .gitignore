@@ -3,3 +3,5 @@ Cached Theme.pak
 store/*.zip
 store/*.png
 store/*.jpg
+.idea/
+*.mp4

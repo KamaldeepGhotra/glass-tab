@@ -24,13 +24,17 @@ Dashboard: <https://chrome.google.com/webstore/devconsole>, then click **Glass T
 
 If the dashboard says it can't submit, click **Why can't I submit?** at the top. It lists the boxes that are empty.
 
-**Current version:** 1.1.1, zip `store/glass-tab-1.1.1.zip`.
-**Since the last listing update:** 1.1.1 adds Customize › Feedback (sent by email through
-Web3Forms), city suggestions while typing in Weather, and stops the ⌘⇧K search bar setting off
-a site's own keyboard shortcuts (YouTube's Space, M, F). Update the **Description** (one line
-under "Easy to set up") and **Privacy › Data usage** (tick Personally identifiable information,
-for the optional reply email). No permission changes. The privacy policy page is updated too:
-push `docs/privacy.html` before submitting.
+**Current version:** 1.1.2, zip `store/glass-tab-1.1.2.zip`.
+**Since the last listing update:** 1.1.2 adds top sites, plus optional bookmarks and history,
+to the ⌘⇧K search bar, unit conversion in the bar, up to five countdowns that can repeat yearly,
+a 5-minute break in Focus, and a rain heads-up in Weather. Fixes: calendar time zones, moved or
+cancelled meetings and monthly repeats like "2nd Tuesday"; one broken calendar link no longer
+hides the others; weather and calendar show the last data when offline; clicking the Focus
+notification opens a new tab; `localhost:3000` opens and `node.js` is searched; Recently closed
+lists closed windows; open Google tabs pick up glass changes right away.
+Update the **Description**: paste the whole block again (the Weather line and the first two lines under "Glass everywhere you search" changed). **Privacy:** two new optional
+permissions, `bookmarks` and `history`; paste their justification boxes (below) and the updated
+`notifications` box. No new install warning, since both are optional. Push `docs/privacy.html` before submitting.
 **Screenshots:** the five in `store/` were taken for 1.0.7 and are already uploaded; nothing to change.
 
 ---
@@ -63,7 +67,7 @@ Wallpapers that move
 • Follows your system's light or dark mode automatically
 
 Widgets that fit your day
-• Weather with the next 24 hours and place suggestions as you type, Calendar (Google or iCloud), To-do, Notes, Countdown, Focus timer, Top sites and Recently closed tabs
+• Weather with the next 24 hours, a heads-up when rain is coming and place suggestions as you type, Calendar (Google or iCloud), To-do, Notes, Countdowns, Focus timer with breaks, Top sites and Recently closed tabs
 • Keep your own sites in Pinned sites, and open calendar events with a click
 • Widgets can sit on glass tiles or right on the wallpaper
 • Pick a size for each one, then press and hold to move them around
@@ -72,7 +76,8 @@ Widgets that fit your day
 • A short setup tour on your first new tab
 
 Glass everywhere you search
-• Press ⌘⇧K (Ctrl+Shift+K) on any site for a glass search bar that also finds your open tabs
+• Press ⌘⇧K (Ctrl+Shift+K) on any site for a glass search bar that also finds your open tabs and top sites, and bookmarks and history if you like
+• Quick math and unit conversion right in the bar, like 5 km in mi
 • Optional: make Google search results glass to match
 • Press / on a new tab to jump to search
 
@@ -172,7 +177,17 @@ Ends the Focus timer at the right time even when no new tab is open.
 
 **notifications justification**
 ```
-Tells the user when a Focus timer session has finished.
+Tells the user when a Focus timer session or break has finished, and offers a 5-minute break.
+```
+
+**bookmarks justification** (optional permission)
+```
+Optional and only requested when the user turns on "Search bar finds bookmarks and history". Lets the glass search bar suggest the user's bookmarks that match what they type. Nothing is stored or sent anywhere.
+```
+
+**history justification** (optional permission)
+```
+Optional and only requested when the user turns on "Search bar finds bookmarks and history". Lets the glass search bar suggest pages the user visited that match what they type. Nothing is stored or sent anywhere.
 ```
 
 **identity justification** (only if the dashboard shows this box)

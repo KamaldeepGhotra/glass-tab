@@ -14,7 +14,7 @@ A calm, liquid-glass new tab page for Chrome.
 
 ## Glass search bar
 
-Press **⌘⇧K** (Mac) or **Ctrl+Shift+K** (Windows/Linux) on any website, or click the Glass Tab toolbar icon, to open the glass bar. Type to search, enter a URL, jump to an open tab, or do quick math (`24*7`, Enter copies the answer). Arrow keys move, Enter opens, Esc closes. It uses your glass settings from the new tab page.
+Press **⌘⇧K** (Mac) or **Ctrl+Shift+K** (Windows/Linux) on any website, or click the Glass Tab toolbar icon, to open the glass bar. Type to search, enter a URL, jump to an open tab or a top site, do quick math (`24*7`) or convert units (`5 km in mi`); Enter copies the answer. Bookmarks and history are found too if you turn that on under Customize › Chrome and Google (an optional permission Chrome asks for then). Arrow keys move, Enter opens, Esc closes. It uses your glass settings from the new tab page.
 
 ## Layout
 

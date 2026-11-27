@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Glass Tab",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "A liquid-glass new tab with a lock-screen clock, widgets and wallpapers, plus a glass search bar and glass Google results.",
   "icons": {
     "16": "icons/icon16.png",
@@ -29,7 +29,7 @@
     }
   },
   "permissions": ["storage", "topSites", "sessions", "search", "favicon", "activeTab", "scripting", "tabs", "alarms", "notifications"],
-  "optional_permissions": ["identity"],
+  "optional_permissions": ["identity", "bookmarks", "history"],
   "optional_host_permissions": [
     "https://www.google.com/*", "https://calendar.google.com/*", "https://*.icloud.com/*",
     "https://api.todoist.com/*", "https://graph.microsoft.com/*", "https://login.microsoftonline.com/*", "https://tasks.googleapis.com/*"

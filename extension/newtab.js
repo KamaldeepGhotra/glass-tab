@@ -433,7 +433,7 @@ const DEFAULTS = {
   quote: 'caption', // 'off' | 'caption' | 'widget'
   layout: [{ k: 'todo', size: 'L' }, { k: 'weather', size: 'M' }, { k: 'sites', size: 'M' }], // = tidyLayout of these three
   city: '', units: 'c', useLocation: false, coords: null, coordsName: '',
-  todos: [], focusMinutes: 30, notes: '', countdown: { title: '', date: '' },
+  todos: [], focusMinutes: 30, notes: '', countdowns: [], // [{ title, date: 'yyyy-mm-dd', yearly }]
   wpColors: {}, // wallpaper key -> { from, to } for waves, { base, c: [3] } for glows (see wpColorKey)
   clockCustom: { dark: [], light: [] }, // clock colors the user added, per mode, as '#rrggbb'
   pins: [], // sites the user added to Pinned sites: [{ url, title }]
@@ -442,6 +442,7 @@ const DEFAULTS = {
   // and importing it doesn't repeat them.
   defaults107: true, pinnedWidget: true,
 };
+const COUNTDOWN_MAX = 5;
 // Where "Share an idea" and the page after uninstalling go. Keep in step with background.js.
 const FEEDBACK_URL = 'https://github.com/KamaldeepGhotra/glass-tab/issues/new';
 // Feedback typed in Customize is emailed by Web3Forms. The key only lets people send
@@ -474,6 +475,9 @@ function migrate(raw) {
     s.defaults107 = true;
   }
   for (const k of ['wallpaper', 'wallpaperLight']) if (RETIRED[s[k]]) s[k] = RETIRED[s[k]];
+  // 1.1.2 allows more than one countdown.
+  if (!Array.isArray(s.countdowns) && s.countdown?.date) s.countdowns = [{ title: s.countdown.title || '', date: s.countdown.date, yearly: false }];
+  delete s.countdown;
   // Pins used to show inside Top sites. People who pinned sites get the new Pinned sites
   // widget next to it once, so their sites don't disappear.
   if (!s.pinnedWidget) {
@@ -482,6 +486,9 @@ function migrate(raw) {
     s.pinnedWidget = true;
   }
   const merged = { ...DEFAULTS, ...s };
+  merged.countdowns = (Array.isArray(merged.countdowns) ? merged.countdowns : [])
+    .filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c?.date)).slice(0, COUNTDOWN_MAX)
+    .map((c) => ({ title: String(c.title || '').slice(0, 40), date: c.date, yearly: !!c.yearly }));
   const hexes = (a) => (Array.isArray(a) ? a.filter((x) => HEX.test(x)).slice(0, MAX_CLOCK_CUSTOM) : []);
   merged.clockCustom = { dark: hexes(merged.clockCustom?.dark), light: hexes(merged.clockCustom?.light) };
   merged.speed = Math.min(3, Math.max(0.25, Number(merged.speed) || 1));
@@ -885,18 +892,26 @@ async function getWeather() {
   const cached = await cacheGet('weather');
   if (cached && cached.key === key && Date.now() - cached.at < 30 * 60e3) return cached.data;
 
-  let lat, lon, place;
-  if (here) {
-    ({ lat, lon } = S.coords);
-    place = S.coordsName || 'Your location';
-  } else {
-    ({ lat, lon, place } = await findCity(S.city));
+  let lat, lon, place, j;
+  try {
+    if (here) {
+      ({ lat, lon } = S.coords);
+      place = S.coordsName || 'Your location';
+    } else {
+      ({ lat, lon, place } = await findCity(S.city));
+    }
+    const unit = S.units === 'f' ? '&temperature_unit=fahrenheit&wind_speed_unit=mph' : '';
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+      + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code'
+      + '&hourly=temperature_2m,weather_code,precipitation_probability&forecast_hours=25'
+      + `&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=5${unit}`);
+    if (!r.ok) throw new Error(`Weather ${r.status}`);
+    j = await r.json();
+  } catch (err) {
+    // Offline or the service is down: show the last weather for this place, marked as old.
+    if (cached?.key === key && err.message !== 'City not found') return { ...cached.data, stale: cached.at };
+    throw err;
   }
-  const unit = S.units === 'f' ? '&temperature_unit=fahrenheit&wind_speed_unit=mph' : '';
-  const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
-    + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code'
-    + '&hourly=temperature_2m,weather_code,precipitation_probability&forecast_hours=25'
-    + `&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=auto&forecast_days=5${unit}`)).json();
   const c = j.current;
   const data = {
     place,
@@ -925,10 +940,16 @@ function weatherWidget(size) {
       .then((d) => {
         const deg = (t) => `${Math.round(t)}°`;
         const day = (t, i) => (i === 0 ? 'Today' : new Date(`${t}T12:00`).toLocaleDateString(undefined, { weekday: 'short' }));
+        const hourAt = (t) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric' });
+        // Old weather (offline) says how old it is. Otherwise, warn about rain coming soon.
+        const wet = d.hours.slice(0, 12).find((x) => x.rain >= 50);
+        const heads = d.stale ? `Offline · as of ${new Date(d.stale).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
+          : wet && d.hours[0].rain < 50 && size !== 'S' ? `Rain likely around ${hourAt(wet.t)}` : '';
         const now = h('div', {},
           h('div', { class: 'wx-temp' }, deg(d.temp)),
           h('div', {}, d.label),
-          h('div', { class: 'muted' }, d.place));
+          h('div', { class: 'muted' }, d.place),
+          heads ? h('div', { class: 'muted wx-note' }, heads) : null);
         if (size === 'S') { body.replaceChildren(now); return; }
         if (size === 'M') {
           body.replaceChildren(now, h('div', { class: 'wx-days' }, ...d.days.slice(0, 3).flatMap((x, i) => [
@@ -936,9 +957,8 @@ function weatherWidget(size) {
           return;
         }
         // Large: current details, the next 24 hours (scroll sideways) and five days.
-        const hour = (t) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric' });
         const hours = h('div', { class: 'wx-strip wx-hours', 'aria-label': 'Next 24 hours' }, ...d.hours.map((x) => h('div', {},
-          h('span', { class: 'muted' }, hour(x.t)), h('b', {}, wxIcon(x.code)), h('span', {}, deg(x.temp)),
+          h('span', { class: 'muted' }, hourAt(x.t)), h('b', {}, wxIcon(x.code)), h('span', {}, deg(x.temp)),
           h('span', { class: 'wx-rain' }, x.rain >= 20 ? `${x.rain}%` : ''))));
         // A mouse wheel scrolls the hours sideways.
         hours.addEventListener('wheel', (e) => {
@@ -957,7 +977,9 @@ function weatherWidget(size) {
           h('div', { class: 'wx-strip' }, ...d.days.map((x, i) => h('div', {}, h('span', { class: 'muted' }, day(x.t, i)), h('b', {}, wxIcon(x.code)), h('span', {}, `${deg(x.max)} ${deg(x.min)}`)))),
         );
       })
-      .catch(() => { body.textContent = "Couldn't load weather. Check the city name."; });
+      .catch((err) => {
+        body.textContent = err.message === 'City not found' ? "Couldn't find that city. Check the name in Customize." : "Couldn't load weather. Check you're online.";
+      });
   }
   return h('div', {}, h('h3', {}, 'Weather'), body);
 }
@@ -1408,10 +1430,14 @@ async function setFocus(next) {
 }
 function drawFocus() { focusViews.forEach((draw) => draw()); }
 
+// A short break after a session. Keep in step with BREAK_SECONDS in background.js.
+const BREAK_SECONDS = 5 * 60;
 function focusWidget(size) {
   const time = h('div', { class: 'focus-time' });
   const start = h('button', { class: 'chip' });
-  const reset = h('button', { class: 'chip', onclick: () => setFocus({ ...focusState, endAt: null, left: focusSeconds(), len: focusSeconds() }) }, 'Reset');
+  const reset = h('button', { class: 'chip', onclick: () => setFocus({ ...focusState, brk: false, endAt: null, left: focusSeconds(), len: focusSeconds() }) }, 'Reset');
+  const brk = h('button', { class: 'chip', onclick: () => setFocus({ ...focusState, brk: true, back: focusSeconds(), endAt: Date.now() + BREAK_SECONDS * 1000, left: BREAK_SECONDS, len: BREAK_SECONDS }) }, 'Break');
+  const title = h('h3', {}, 'Focus');
   // − and + pick the session length while the timer isn't running.
   const step = (dir) => {
     const i = FOCUS_LENGTHS.indexOf(S.focusMinutes);
@@ -1419,7 +1445,7 @@ function focusWidget(size) {
     if (next === S.focusMinutes) return;
     S.focusMinutes = next;
     save();
-    setFocus({ ...focusState, endAt: null, left: focusSeconds(), len: focusSeconds() });
+    setFocus({ ...focusState, brk: false, endAt: null, left: focusSeconds(), len: focusSeconds() });
   };
   const less = h('button', { class: 'adj', 'aria-label': 'Shorter session', onclick: () => step(-1) }, '−');
   const more = h('button', { class: 'adj', 'aria-label': 'Longer session', onclick: () => step(1) }, '+');
@@ -1429,7 +1455,7 @@ function focusWidget(size) {
     if (f.endAt) setFocus({ ...f, endAt: null, left: focusLeft(f) });
     else setFocus({ ...f, endAt: Date.now() + f.left * 1000 });
   };
-  const el = h('div', { class: 'center' }, h('h3', {}, 'Focus'), h('div', { class: 'focus-set' }, size === 'S' ? null : less, time, size === 'S' ? null : more), h('div', { class: 'row' }, start, reset), size === 'M' ? count : null);
+  const el = h('div', { class: 'center' }, title, h('div', { class: 'focus-set' }, size === 'S' ? null : less, time, size === 'S' ? null : more), h('div', { class: 'row' }, start, reset, size === 'M' ? brk : null), size === 'M' ? count : null);
   const draw = () => {
     if (!el.isConnected && focusViews.has(draw) && el.dataset.drawn) { focusViews.delete(draw); return; }
     el.dataset.drawn = '1';
@@ -1437,7 +1463,7 @@ function focusWidget(size) {
     let left = focusLeft(focusState);
     // Without Chrome (preview), finish the session here instead of in the background worker.
     if (!hasChrome && focusState.endAt && left === 0) {
-      focusState = freshFocus({ ...focusState, endAt: null, left: focusSeconds(), done: focusState.done + 1 });
+      focusState = freshFocus({ ...focusState, brk: false, endAt: null, left: focusSeconds(), len: focusSeconds(), done: focusState.done + (focusState.brk ? 0 : 1) });
       left = focusSeconds();
     }
     const hrs = Math.floor(left / 3600), mins = Math.floor(left / 60) % 60, secs = String(left % 60).padStart(2, '0');
@@ -1445,6 +1471,8 @@ function focusWidget(size) {
     // Lengths can only change before a session starts or after Reset.
     const idle = !focusState.endAt && left === (focusState.len || focusSeconds());
     less.hidden = more.hidden = !idle;
+    brk.hidden = !idle;
+    title.textContent = focusState.brk ? 'Break' : 'Focus';
     less.disabled = S.focusMinutes <= FOCUS_LENGTHS[0];
     more.disabled = S.focusMinutes >= FOCUS_LENGTHS[FOCUS_LENGTHS.length - 1];
     start.textContent = focusState.endAt ? 'Pause' : 'Start';
@@ -1534,11 +1562,18 @@ function recentWidget(size) {
   const list = h('div', {});
   if (hasChrome && chrome.sessions) {
     chrome.sessions.getRecentlyClosed({ maxResults: 10 }, (items) => {
-      // Skip closed new tab pages: they're not worth reopening.
-      const tabs = items.filter((i) => i.tab && /^https?:/.test(i.tab.url)).slice(0, size === 'L' ? 7 : 3);
-      if (!tabs.length) { list.textContent = 'Nothing closed yet.'; return; }
-      list.replaceChildren(...tabs.map(({ tab }) => h('button', { class: 'recent', title: tab.url, onclick: () => chrome.sessions.restore(tab.sessionId) },
-        h('img', { src: favicon(tab.url), alt: '' }), h('span', {}, tab.title || tab.url))));
+      // Skip closed new tab pages: they're not worth reopening. A closed window shows
+      // as one line and reopens with all its tabs.
+      const web = (t) => /^https?:/.test(t?.url || '');
+      const shown = items.filter((i) => web(i.tab) || i.window?.tabs?.some(web)).slice(0, size === 'L' ? 7 : 3);
+      if (!shown.length) { list.textContent = 'Nothing closed yet.'; return; }
+      list.replaceChildren(...shown.map(({ tab, window: w }) => {
+        if (tab) return h('button', { class: 'recent', title: tab.url, onclick: () => chrome.sessions.restore(tab.sessionId) },
+          h('img', { src: favicon(tab.url), alt: '' }), h('span', {}, tab.title || tab.url));
+        const first = w.tabs.find(web), n = w.tabs.length;
+        return h('button', { class: 'recent', title: w.tabs.map((t) => t.title || t.url).join('\n'), onclick: () => chrome.sessions.restore(w.sessionId) },
+          h('img', { src: favicon(first.url), alt: '' }), h('span', {}, `Window · ${n} ${n === 1 ? 'tab' : 'tabs'} · ${first.title || first.url}`));
+      }));
     });
   } else list.textContent = 'Available when installed in Chrome.';
   return h('div', {}, h('h3', {}, 'Recently closed'), list);
@@ -1567,37 +1602,67 @@ function notesWidget(size) {
   return h('div', { class: 'notes-w' }, h('div', { class: 'whead' }, h('h3', {}, 'Notes'), count), area);
 }
 
-// Countdown to a date the user picks, like an exam, a trip or a birthday.
+// Countdowns to dates the user picks, like an exam, a trip or a birthday. Up to
+// COUNTDOWN_MAX; one that repeats every year (a birthday) counts to the next one.
+function countdownDays(c) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const target = new Date(`${c.date}T00:00`);
+  if (c.yearly) {
+    target.setFullYear(today.getFullYear());
+    if (target < today) target.setFullYear(today.getFullYear() + 1);
+  }
+  return { target, days: Math.round((target - today) / 864e5) };
+}
 function countdownWidget(size) {
   const el = h('div', { class: 'cd-w' });
+  const editBtn = (text) => h('button', { class: text === 'Edit' ? 'linkish' : 'chip', onclick: (e) => { e.stopPropagation(); edit(); } }, text);
   const draw = () => {
-    const c = S.countdown;
-    if (!c.date) {
-      el.replaceChildren(h('h3', {}, 'Countdown'), h('button', { class: 'chip', onclick: (e) => { e.stopPropagation(); edit(); } }, 'Set a date'));
+    // Soonest first; dates that have passed go after the ones still coming.
+    const list = S.countdowns.filter((c) => c.date).map((c) => ({ ...c, ...countdownDays(c) }))
+      .sort((x, y) => (x.days < 0) - (y.days < 0) || Math.abs(x.days) - Math.abs(y.days));
+    if (!list.length) { el.replaceChildren(h('h3', {}, 'Countdown'), editBtn('Set a date')); return; }
+    const say = (days) => (days === 0 ? 'Today' : `${Math.abs(days)} ${Math.abs(days) === 1 ? 'day' : 'days'}${days < 0 ? ' ago' : ''}`);
+    if (size === 'M' && list.length > 1) {
+      el.replaceChildren(h('div', { class: 'whead' }, h('h3', {}, 'Countdowns'), editBtn('Edit')),
+        h('div', { class: 'cd-list' }, ...list.slice(0, 3).flatMap((c) => [h('span', {}, c.title || 'Countdown'), h('b', {}, say(c.days))])));
       return;
     }
-    const target = new Date(`${c.date}T00:00`);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const days = Math.round((target - today) / 864e5);
+    const { title, target, days } = list[0];
+    const today = new Date();
     const big = days === 0 ? 'Today' : String(Math.abs(days));
     const unit = days === 0 ? '' : `${Math.abs(days) === 1 ? 'day' : 'days'}${days < 0 ? ' ago' : ''}`;
     const when = target.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: target.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
     const weeks = days > 13 ? `${Math.floor(days / 7)} weeks, ${days % 7} ${days % 7 === 1 ? 'day' : 'days'}` : null;
     el.replaceChildren(
-      h('div', { class: 'whead' }, h('h3', {}, c.title || 'Countdown'), h('button', { class: 'linkish', onclick: (e) => { e.stopPropagation(); edit(); } }, 'Edit')),
+      h('div', { class: 'whead' }, h('h3', {}, title || 'Countdown'), editBtn('Edit')),
       h('div', { class: 'cd-num' }, big, h('span', {}, ` ${unit}`)),
       ...(size === 'M' ? [h('div', { class: 'muted' }, [when, weeks].filter(Boolean).join(' · '))] : []));
   };
   const edit = () => {
-    const title = h('input', { placeholder: 'What for?', maxlength: '40', value: S.countdown.title });
-    const date = h('input', { type: 'date', value: S.countdown.date, 'aria-label': 'Date' });
+    const rows = h('div', { class: 'cd-rows' });
+    const addRow = (c = { title: '', date: '', yearly: false }) => {
+      const row = h('div', { class: 'cd-row' },
+        h('input', { placeholder: 'What for?', maxlength: '40', value: c.title, 'aria-label': 'What for?' }),
+        h('div', { class: 'row' },
+          h('input', { type: 'date', value: c.date, 'aria-label': 'Date' }),
+          h('label', { class: 'cd-yearly', title: 'Repeats every year, like a birthday' }, h('input', { type: 'checkbox', ...(c.yearly ? { checked: '' } : {}) }), 'Yearly'),
+          h('button', { type: 'button', class: 'linkish', 'aria-label': 'Remove', onclick: () => { row.remove(); more.hidden = false; } }, '×')));
+      rows.append(row);
+      more.hidden = rows.children.length >= COUNTDOWN_MAX;
+      return row;
+    };
+    const more = h('button', { class: 'linkish', type: 'button', onclick: () => addRow().querySelector('input').focus() }, 'Add another');
     el.replaceChildren(h('form', { class: 'cd-form', onsubmit: (e) => {
       e.preventDefault();
-      S.countdown = { title: title.value.trim(), date: date.value };
+      S.countdowns = [...rows.children].map((r) => {
+        const [title, date, yearly] = r.querySelectorAll('input');
+        return { title: title.value.trim(), date: date.value, yearly: yearly.checked };
+      }).filter((c) => c.date);
       save();
       draw();
-    } }, title, date, h('div', { class: 'row' }, h('button', { class: 'chip' }, 'Save'), h('button', { class: 'chip', type: 'button', onclick: draw }, 'Cancel'))));
-    title.focus();
+    } }, rows, more, h('div', { class: 'row' }, h('button', { class: 'chip' }, 'Save'), h('button', { class: 'chip', type: 'button', onclick: draw }, 'Cancel'))));
+    (S.countdowns.length ? S.countdowns : [undefined]).forEach((c) => addRow(c));
+    rows.querySelector('input').focus();
   };
   draw();
   return el;
@@ -1609,23 +1674,36 @@ function countdownWidget(size) {
 // storage only (not synced), because anyone with it can read the calendar.
 const CAL_ORIGINS = ['https://calendar.google.com/*', 'https://*.icloud.com/*'];
 
-// Minimal iCal reader: events, all-day events, time zones as local time, and the
-// common repeat rules (daily, weekly by weekday, monthly, yearly; count/until/except).
+// Minimal iCal reader: events, all-day events, time zones, moved or cancelled single
+// events in a series, and the common repeat rules (daily, weekly by weekday, monthly by
+// date or by weekday like "2nd Tuesday", yearly; count/until/except).
+const WEEKDAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 function parseICS(text, from, to) {
   const lines = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);
-  const out = [];
+  const out = [], events = [];
   let ev = null;
+  // A wall-clock time in a named time zone, as the real moment. A zone Chrome doesn't
+  // know (Outlook's Windows names) falls back to this computer's time.
+  const zoned = (y, mo, d, hh, mm, ss, tz) => {
+    const wall = Date.UTC(y, mo, d, hh, mm, ss);
+    try {
+      const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+      const offset = (t) => { const p = Object.fromEntries(f.formatToParts(t).map((x) => [x.type, +x.value])); return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - t; };
+      return new Date(wall - offset(wall - offset(wall)));
+    } catch { return new Date(y, mo, d, hh, mm, ss); }
+  };
   const toDate = (v, params) => {
     const m = v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?/);
     if (!m) return null;
     const [, y, mo, d, hh, mm, ss, z] = m;
     if (!hh) return { date: new Date(+y, mo - 1, +d), allDay: true };
-    const date = z ? new Date(Date.UTC(+y, mo - 1, +d, +hh, +mm, +ss)) : new Date(+y, mo - 1, +d, +hh, +mm, +ss);
+    const tz = params.match(/TZID="?([^";:]+)/)?.[1];
+    const date = z ? new Date(Date.UTC(+y, mo - 1, +d, +hh, +mm, +ss)) : tz ? zoned(+y, mo - 1, +d, +hh, +mm, +ss, tz) : new Date(+y, mo - 1, +d, +hh, +mm, +ss);
     return { date, allDay: /VALUE=DATE(;|$)/.test(params) };
   };
   for (const line of lines) {
     if (line === 'BEGIN:VEVENT') { ev = { ex: [] }; continue; }
-    if (line === 'END:VEVENT') { if (ev?.start) expand(ev); ev = null; continue; }
+    if (line === 'END:VEVENT') { if (ev?.start) events.push(ev); ev = null; continue; }
     if (!ev) continue;
     const i = line.indexOf(':');
     const [name, ...rest] = line.slice(0, i).split(';');
@@ -1635,8 +1713,17 @@ function parseICS(text, from, to) {
     else if (name === 'DTEND') ev.end = toDate(value, params)?.date;
     else if (name === 'RRULE') ev.rule = Object.fromEntries(value.split(';').map((kv) => kv.split('=')));
     else if (name === 'EXDATE') value.split(',').forEach((v) => { const d = toDate(v, params); if (d) ev.ex.push(d.date.getTime()); });
+    else if (name === 'UID') ev.uid = value;
+    else if (name === 'RECURRENCE-ID') ev.moved = toDate(value, params)?.date.getTime();
     else if (name === 'STATUS' && value === 'CANCELLED') ev.cancelled = true;
     else if (name === 'URL' && /^https?:\/\//i.test(value)) ev.url = value;
+  }
+  // One meeting in a series that was moved or cancelled comes as its own event. It
+  // replaces that day's meeting from the series.
+  const moved = new Map();
+  for (const e of events) if (e.moved != null && e.uid) moved.set(e.uid, [...(moved.get(e.uid) || []), e.moved]);
+  for (const e of events) {
+    if (e.moved != null) { delete e.rule; expand(e); } else expand({ ...e, ex: [...e.ex, ...(moved.get(e.uid) || [])] });
   }
   function expand(e) {
     if (e.cancelled) return;
@@ -1646,7 +1733,8 @@ function parseICS(text, from, to) {
     if (!r) { add(e.start.date); return; }
     const step = +(r.INTERVAL || 1), until = r.UNTIL ? toDate(r.UNTIL, '').date : null;
     let left = r.COUNT ? +r.COUNT : Infinity;
-    const days = r.BYDAY ? r.BYDAY.split(',').map((x) => ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'].indexOf(x.slice(-2))) : null;
+    if (r.FREQ === 'MONTHLY') { monthly(e, r, step, until, left, add); return; }
+    const days = r.BYDAY ? r.BYDAY.split(',').map((x) => WEEKDAYS.indexOf(x.slice(-2))) : null;
     let d = new Date(e.start.date);
     // Old daily or weekly repeats with no count: jump straight to the coming week.
     const period = { DAILY: 1, WEEKLY: 7 }[r.FREQ] * step;
@@ -1670,30 +1758,69 @@ function parseICS(text, from, to) {
       add(new Date(d)); left--;
       if (r.FREQ === 'DAILY') d.setDate(d.getDate() + step);
       else if (r.FREQ === 'WEEKLY') d.setDate(d.getDate() + 7 * step);
-      else if (r.FREQ === 'MONTHLY') d.setMonth(d.getMonth() + step);
       else if (r.FREQ === 'YEARLY') d.setFullYear(d.getFullYear() + step);
       else break;
+    }
+  }
+  // Monthly repeats, month by month: on a date ("the 15th", "the last day") or on a
+  // weekday ("2nd Tuesday", "last Friday"). Months without that day are skipped.
+  function monthly(e, r, step, until, left, add) {
+    const s = e.start.date;
+    const byDay = r.BYDAY?.split(',').map((x) => ({ nth: parseInt(x, 10) || 0, wd: WEEKDAYS.indexOf(x.slice(-2)) }));
+    const byDate = r.BYMONTHDAY ? r.BYMONTHDAY.split(',').map(Number) : [s.getDate()];
+    for (let m = 0; m < 5000 * step && left > 0; m += step) {
+      const y = s.getFullYear(), mo = s.getMonth() + m, last = new Date(y, mo + 1, 0).getDate();
+      const first = new Date(y, mo, 1);
+      if (first >= to || (until && first > until)) return;
+      let dates;
+      if (byDay) {
+        dates = byDay.flatMap(({ nth, wd }) => {
+          const all = [];
+          for (let d = 1; d <= last; d++) if (new Date(y, mo, d).getDay() === wd) all.push(d);
+          return nth ? [all[nth > 0 ? nth - 1 : all.length + nth]] : all;
+        });
+      } else dates = byDate.map((d) => (d < 0 ? last + d + 1 : d));
+      dates = [...new Set(dates.filter((d) => d >= 1 && d <= last))].sort((a, b) => a - b);
+      if (r.BYSETPOS) dates = r.BYSETPOS.split(',').map((p) => dates[+p > 0 ? +p - 1 : dates.length + +p]).filter(Boolean);
+      for (const day of dates) {
+        const d = new Date(y, mo, day, s.getHours(), s.getMinutes(), s.getSeconds());
+        if (d < s) continue;
+        if ((until && d > until) || d >= to) return;
+        add(d);
+        if (--left <= 0) return;
+      }
     }
   }
   return out;
 }
 
 const calLink = (u) => u.trim().replace(/^webcal:/i, 'https:');
+// Each link loads on its own, so one broken link doesn't hide the others. Offline, the
+// last events Glass Tab saw are shown instead, marked as not up to date.
 async function getCalendar() {
   const links = ((await cacheGet('calLinks')) || []).map(calLink).filter(Boolean);
   if (!links.length) return null;
-  const cached = await cacheGet('calCache'), key = `v2|${links.join()}`;
-  if (cached && cached.key === key && Date.now() - cached.at < 15 * 60e3 && cached.events.every((x) => typeof x.start === 'number')) return cached.events.map((x) => ({ ...x, start: new Date(x.start), end: new Date(x.end) }));
+  const cached = await cacheGet('calCache'), key = `v3|${links.join()}`;
+  const fromCache = (c) => ({ events: c.events.map((x) => ({ ...x, start: new Date(x.start), end: new Date(x.end) })).filter((x) => +x.end > Date.now() || x.allDay), failed: c.failed || 0, at: c.at });
+  if (cached && cached.key === key && Date.now() - cached.at < 15 * 60e3) return fromCache(cached);
   const from = new Date(); from.setHours(0, 0, 0, 0);
   const to = new Date(+from + 8 * 864e5);
   // Each event remembers which service it came from, so a click can open it there.
-  const lists = await Promise.all(links.map(async (u) => parseICS(await (await fetch(u, { cache: 'no-store' })).text(), from, to)
-    .map((x) => ({ ...x, cal: /(^|\.)icloud\.com$/.test(new URL(u).hostname) ? 'icloud' : 'google' }))));
+  const lists = await Promise.allSettled(links.map(async (u) => {
+    const r = await fetch(u, { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    return parseICS(await r.text(), from, to).map((x) => ({ ...x, cal: /(^|\.)icloud\.com$/.test(new URL(u).hostname) ? 'icloud' : 'google' }));
+  }));
+  const failed = lists.filter((x) => x.status === 'rejected').length;
+  if (failed === links.length) {
+    if (cached?.key === key) return { ...fromCache(cached), stale: true };
+    throw new Error('Calendar not loaded');
+  }
   const now = Date.now();
-  const events = lists.flat().filter((x) => +x.end > now || x.allDay).sort((a, b) => a.start - b.start || a.allDay - b.allDay);
+  const events = lists.flatMap((x) => x.value || []).filter((x) => +x.end > now || x.allDay).sort((a, b) => a.start - b.start || a.allDay - b.allDay);
   // Chrome storage can't hold dates (they come back empty), so store them as numbers.
-  cacheSet('calCache', { key, at: Date.now(), events: events.map((x) => ({ ...x, start: +x.start, end: +x.end })) });
-  return events;
+  cacheSet('calCache', { key, at: now, failed, events: events.map((x) => ({ ...x, start: +x.start, end: +x.end })) });
+  return { events, failed, at: now };
 }
 
 function calendarWidget(size) {
@@ -1707,11 +1834,16 @@ function calendarWidget(size) {
     return diff <= 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
   };
   const row = (e) => h('a', { class: 'cal-ev', href: eventLink(e), title: e.title }, h('span', { class: 'cal-t' }, time(e)), h('span', { class: 'cal-n' }, e.title));
-  getCalendar().then((events) => {
-    if (!events) {
+  getCalendar().then((got) => {
+    if (!got) {
       body.replaceChildren(h('button', { class: 'chip', onclick: (e) => { e.stopPropagation(); openCalendarSettings(); } }, 'Link a calendar'));
       return;
     }
+    const { events, failed, stale, at } = got;
+    // Say when some of it is missing or not up to date, under the title.
+    const note = stale ? `Offline · as of ${new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
+      : failed ? `${failed} ${failed === 1 ? "calendar couldn't" : "calendars couldn't"} load` : '';
+    if (note) head.after(h('div', { class: 'muted cal-note', title: failed && !stale ? 'Check the links in Customize › Calendar' : '' }, note));
     if (!events.length) { body.textContent = 'Nothing coming up this week.'; return; }
     if (size === 'S') { body.replaceChildren(h('a', { class: 'cal-ev cal-one', href: eventLink(events[0]), title: events[0].title }, h('div', { class: 'muted' }, `Next · ${dayName(events[0].start)}`), h('div', { class: 'cal-next' }, events[0].title), h('div', { class: 'muted' }, time(events[0])))); return; }
     // Medium: the next three events; Large: the coming week. Both grouped by day.
@@ -1930,12 +2062,28 @@ grid.addEventListener('click', (e) => { if (editing && !e.target.closest('.wctl'
 $('#doneEdit').addEventListener('click', () => setEditing(false));
 
 // ---------- search ----------
+// A web address, or text that is clearly a site: example.com, localhost:3000,
+// 192.168.1.1:8080. Words like node.js or readme.md are searched instead.
+// The same code is in bar.js and newtab.js: keep them in step.
+const FILE_ENDINGS = /^(js|ts|py|md|txt|json|html?|css|exe|pdf|png|jpe?g|gif|zip|sh|rb|rs|cpp|java|php|swift|kt|mp[34]|docx?|xlsx?|pptx?)$/i;
+function looksLikeUrl(q) {
+  if (/^https?:\/\//i.test(q)) return true;
+  if (/\s/.test(q)) return false;
+  const host = q.split(/[/?#]/)[0];
+  if (/^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?$/i.test(host)) return true;
+  const m = host.match(/^[^.:]+(\.[^.:]+)*\.([a-z]{2,24}|xn--[a-z0-9-]+)(:\d+)?$/i);
+  return !!m && !FILE_ENDINGS.test(m[2]);
+}
+// Sites on this computer or the local network usually don't have https.
+function urlFor(q) {
+  if (/^https?:\/\//i.test(q)) return q;
+  return /^(localhost|\d{1,3}(\.\d{1,3}){3})([:/?#]|$)/i.test(q) ? `http://${q}` : `https://${q}`;
+}
 $('#search').addEventListener('submit', (e) => {
   e.preventDefault();
   const q = $('#q').value.trim();
   if (!q) return;
-  if (/^https?:\/\//i.test(q)) { location.href = q; return; }
-  if (!/\s/.test(q) && /^[^.]+\.[^.]{2,}/.test(q)) { location.href = `https://${q}`; return; }
+  if (looksLikeUrl(q)) { location.href = urlFor(q); return; }
   if (hasChrome && chrome.search) chrome.search.query({ text: q, disposition: 'CURRENT_TAB' });
   else location.href = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 });
@@ -2090,6 +2238,15 @@ function buildPanel() {
   $('#units').addEventListener('change', (e) => { S.units = e.target.value; update(); renderWidgets(); });
   $('#useLocation').addEventListener('click', useMyLocation);
   $('#glassGoogle').addEventListener('change', (e) => setGlassGoogle(e.target.checked));
+  // Bookmarks and history in the search bar: Chrome's permission is the setting, per computer.
+  const BAR_MORE = { permissions: ['bookmarks', 'history'] };
+  if (hasChrome) chrome.permissions.contains(BAR_MORE).then((on) => { $('#barMore').checked = on; });
+  else $('#barMore').disabled = true;
+  $('#barMore').addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    const ok = await (on ? chrome.permissions.request(BAR_MORE) : chrome.permissions.remove(BAR_MORE)).catch(() => false);
+    e.target.checked = on ? ok : !ok;
+  });
   if (hasChrome) ggChecked = Promise.all([ggIsOn(), ggGet()]).then(([on, gg]) => { $('#glassGoogle').checked = googleOn = on; ggState = gg.state || ''; if (on && !S.glassGoogle) { S.glassGoogle = true; save(); } syncPanel(); });
   $('#editLayout').addEventListener('click', () => setEditing(true));
   $('#tidyLayout').addEventListener('click', () => { S.layout = tidyLayout(S.layout.map((w) => w.k)); update(); renderWidgets(); });
@@ -2313,6 +2470,8 @@ async function importSettings(file) {
   try { got = JSON.parse(await file.text()); } catch {}
   const s = got?.app === 'Glass Tab' && got.settings;
   if (!s || typeof s !== 'object' || Array.isArray(s)) { note.textContent = "That isn't a Glass Tab settings file."; return; }
+  // Backups from before 1.1.2 have one countdown.
+  if (!s.countdowns && s.countdown?.date) s.countdowns = [{ title: s.countdown.title || '', date: s.countdown.date }];
   // Only known settings, each the same kind as its default, and within the sync limits.
   const kind = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
   const clean = Object.fromEntries(Object.entries(s).filter(([k, v]) => k in DEFAULTS
@@ -2673,7 +2832,7 @@ const TOUR = [
 ];
 // What's new: one quiet line after an update, offered once to people who already took the
 // setup tour. Raise NEWS_ID (and change the line in newtab.html) when there's something new.
-const NEWS_ID = '1.1.1';
+const NEWS_ID = '1.1.2';
 let activeTour = TOUR;
 const tourSteps = () => activeTour.filter((s) => !s.when || s.when());
 let tourStep = -1;
@@ -2768,7 +2927,7 @@ function closeNews() {
 }
 $('#newsTipLook').addEventListener('click', () => {
   closeNews();
-  openPanelAt('feedback', '#fbText');
+  openPanelAt('chrome', '#barMore');
 });
 $('#newsTipKeep').addEventListener('click', closeNews);
 $('#newsTipClose').addEventListener('click', closeNews);
