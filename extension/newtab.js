@@ -1514,7 +1514,7 @@ function sitesWidget(size, pinnedOnly = false) {
     grid.replaceChildren(...pins.map((p) => tile(p, true)), ...rest.map((s) => tile(s, false)));
   };
   const show = () => {
-    el.replaceChildren(h('div', { class: 'whead' }, h('h3', {}, pinnedOnly ? 'Pinned sites' : 'Top sites'),
+    refill(el, h('div', { class: 'whead' }, h('h3', {}, pinnedOnly ? 'Pinned sites' : 'Top sites'),
       pinnedOnly && S.pins.length < PIN_MAX ? h('button', { class: 'linkish', onclick: (e) => { e.stopPropagation(); edit(); } }, 'Add site') : null), grid);
     if (!pinnedOnly && hasChrome && chrome.topSites) chrome.topSites.get(draw); else draw([]);
   };
@@ -1523,7 +1523,7 @@ function sitesWidget(size, pinnedOnly = false) {
     const url = h('input', { placeholder: 'Website, like example.com', maxlength: '300', 'aria-label': 'Website' });
     const name = h('input', { placeholder: 'Name (optional)', maxlength: '40', 'aria-label': 'Name' });
     const note = h('div', { class: 'muted' });
-    el.replaceChildren(h('form', { class: 'pin-form', onsubmit: (e) => {
+    refill(el, h('form', { class: 'pin-form', onsubmit: (e) => {
       e.preventDefault();
       const added = pinSite(url.value, name.value);
       if (added === true) { show(); return; }
@@ -1620,10 +1620,10 @@ function countdownWidget(size) {
     // Soonest first; dates that have passed go after the ones still coming.
     const list = S.countdowns.filter((c) => c.date).map((c) => ({ ...c, ...countdownDays(c) }))
       .sort((x, y) => (x.days < 0) - (y.days < 0) || Math.abs(x.days) - Math.abs(y.days));
-    if (!list.length) { el.replaceChildren(h('h3', {}, 'Countdown'), editBtn('Set a date')); return; }
+    if (!list.length) { refill(el, h('h3', {}, 'Countdown'), editBtn('Set a date')); return; }
     const say = (days) => (days === 0 ? 'Today' : `${Math.abs(days)} ${Math.abs(days) === 1 ? 'day' : 'days'}${days < 0 ? ' ago' : ''}`);
     if (size === 'M' && list.length > 1) {
-      el.replaceChildren(h('div', { class: 'whead' }, h('h3', {}, 'Countdowns'), editBtn('Edit')),
+      refill(el, h('div', { class: 'whead' }, h('h3', {}, 'Countdowns'), editBtn('Edit')),
         h('div', { class: 'cd-list' }, ...list.slice(0, 3).flatMap((c) => [h('span', {}, c.title || 'Countdown'), h('b', {}, say(c.days))])));
       return;
     }
@@ -1633,7 +1633,7 @@ function countdownWidget(size) {
     const unit = days === 0 ? '' : `${Math.abs(days) === 1 ? 'day' : 'days'}${days < 0 ? ' ago' : ''}`;
     const when = target.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: target.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
     const weeks = days > 13 ? `${Math.floor(days / 7)} weeks, ${days % 7} ${days % 7 === 1 ? 'day' : 'days'}` : null;
-    el.replaceChildren(
+    refill(el,
       h('div', { class: 'whead' }, h('h3', {}, title || 'Countdown'), editBtn('Edit')),
       h('div', { class: 'cd-num' }, big, h('span', {}, ` ${unit}`)),
       ...(size === 'M' ? [h('div', { class: 'muted' }, [when, weeks].filter(Boolean).join(' · '))] : []));
@@ -1652,7 +1652,7 @@ function countdownWidget(size) {
       return row;
     };
     const more = h('button', { class: 'linkish', type: 'button', onclick: () => addRow().querySelector('input').focus() }, 'Add another');
-    el.replaceChildren(h('form', { class: 'cd-form', onsubmit: (e) => {
+    refill(el, h('form', { class: 'cd-form', onsubmit: (e) => {
       e.preventDefault();
       S.countdowns = [...rows.children].map((r) => {
         const [title, date, yearly] = r.querySelectorAll('input');
@@ -1921,6 +1921,11 @@ function sizePicker(k, current, long) {
     }, long ? SIZE_NAMES[z] : z)));
 }
 
+// Redraws a widget's content but keeps the edit-mode size and remove buttons.
+function refill(el, ...kids) {
+  el.replaceChildren(...kids, ...el.querySelectorAll(':scope > .wctl'));
+}
+
 function buildWidget({ k, size }) {
   const el = RENDER[k](size);
   el.classList.add('widget', 'glass', `size-${size}`);
@@ -2088,8 +2093,13 @@ $('#search').addEventListener('submit', (e) => {
   else location.href = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 });
 
-// The glass bar shortcut can't inject into this page, so it focuses the search box instead.
-if (hasChrome) chrome.runtime.onMessage.addListener((msg) => { if (msg.type === 'focus-search') $('#q').focus(); });
+// Chrome won't inject the glass bar into this page, so the page loads it itself.
+// Every open new tab hears the message: only the one the shortcut was pressed on opens it.
+if (hasChrome) chrome.runtime.onMessage.addListener(async (msg) => {
+  if (msg.type !== 'open-bar' || (await chrome.tabs.getCurrent())?.id !== msg.tabId) return;
+  if (window.__glassBar) window.__glassBar.toggle();
+  else document.head.append(Object.assign(document.createElement('script'), { src: 'bar.js' }));
+});
 
 // ---------- settings panel ----------
 // Opens Customize on one group, with a field in it focused.

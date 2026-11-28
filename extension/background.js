@@ -49,7 +49,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
 async function openBar(tab) {
   if (!tab?.id) return;
   if (tab.url === 'chrome://newtab/' || tab.url?.startsWith(chrome.runtime.getURL(''))) {
-    chrome.runtime.sendMessage({ type: 'focus-search' }).catch(() => {});
+    chrome.runtime.sendMessage({ type: 'open-bar', tabId: tab.id }).catch(() => {});
     return;
   }
   try {

@@ -33,7 +33,6 @@
   .row svg { flex: none; opacity: .75; }
   input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--fg); font: inherit; font-size: 18px; }
   input::placeholder { color: var(--sub); }
-  kbd { font: inherit; font-size: 11px; color: var(--sub); border: 1px solid var(--edge); border-radius: 6px; padding: 2px 6px; }
   ul { list-style: none; margin: 0; padding: 0; }
   ul:not(:empty) { border-top: 1px solid var(--hover); padding-top: 4px; margin-top: 2px; }
   li { display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-radius: 18px; cursor: pointer; }
@@ -57,7 +56,6 @@
     <div class="row">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <input placeholder="Search, type a URL, or find a tab" autocomplete="off" spellcheck="false" aria-label="Search">
-      <kbd>esc</kbd>
     </div>
     <ul role="listbox"></ul>
   </div>
